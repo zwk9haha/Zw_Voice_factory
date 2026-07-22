@@ -1,0 +1,77 @@
+# Architecture Baseline
+
+## Shared Casting Pipeline
+
+```text
+novel.txt
+  -> story analysis
+  -> character candidates with evidence and confidence
+  -> alias reconciliation and false-positive rejection
+  -> importance and archetype assignment
+  -> character_voice_bible.json
+  -> director_doc.json
+  -> canonical-reference generation and user review
+  -> emotion-variant generation and user review
+```
+
+The two public documents have separate ownership:
+
+- `character_voice_bible.json` owns identity, importance, accepted references, emotion children, archetype fallback, and route policy.
+- `director_doc.json` owns sentence performance and only references `character_id`.
+
+Rejected candidates remain in an analysis audit report with their source evidence. They are not written as characters.
+
+## Rendering Routes
+
+### Fast
+
+```text
+director segment
+  -> lightweight TTS speaker selected for gender/range/performance
+  -> warm RVC character model when assigned
+  -> sentence cache
+  -> playback queue
+```
+
+Low-importance characters use an archetype TTS voice directly. Important custom characters use RVC. Playback should generate sentence `N+1` while sentence `N` is playing.
+
+### Quality
+
+```text
+director segment
+  -> emotion mapping
+  -> approved emotion child or canonical fallback
+  -> GPT-SoVITS
+  -> optional, benchmark-gated RVC stability layer
+  -> sentence cache
+  -> playback queue
+```
+
+GPT-SoVITS does not receive free-form director emotion as a reliable native control. Emotion is expressed primarily through the selected reference variant, punctuation, segmentation, speed, and pause policy.
+
+## Reference Family
+
+Every accepted character has one canonical parent. Emotion variants are children, never independent identities.
+
+```json
+{
+  "reference_id": "xiao_yan_ref_neutral_v1",
+  "character_id": "xiao_yan",
+  "parent_reference_id": null,
+  "emotion": "neutral",
+  "intensity": 0.5,
+  "review_status": "accepted"
+}
+```
+
+An emotion child sets `parent_reference_id` to the canonical reference. The review UI supports individual regeneration, individual acceptance, and batch acceptance.
+
+## Frontend Boundary
+
+The frontend is a dense audio workstation, not a Gradio form collection. React owns interaction state; FastAPI owns domain state and long-running jobs. WebSocket or SSE carries job progress and log events.
+
+The initial layout has three stable panes:
+
+- Left: cast, voice profile, canonical reference, emotion children.
+- Center: script and director annotations.
+- Right: generation queue, waveform results, review actions, and versions.

@@ -1,0 +1,17 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+*.tsbuildinfo
+backend/.venv/
+frontend/node_modules/
+frontend/.npm-cache/
+frontend/dist/
+frontend/vite.config.js
+frontend/vite.config.d.ts
+models/
+assets/voice_samples/
+assets/rvc_models/
+input/
+config/resource_paths.toml
+outputs/*
+!outputs/.gitkeep
