@@ -29,6 +29,8 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .health--error { color: #e39a72; }
 .icon-button { width: 30px; height: 30px; display: inline-grid; place-items: center; padding: 0; border: 1px solid #373945; border-radius: 5px; background: #20222a; cursor: pointer; }
 .icon-button:hover { border-color: #646979; background: #282a33; }
+.icon-button:disabled, .primary-button:disabled, .secondary-button:disabled, .text-button:disabled { opacity: 0.42; cursor: not-allowed; }
+a.icon-button { color: inherit; text-decoration: none; }
 .stop-button, .primary-button, .secondary-button, .accept-button, .text-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 5px; cursor: pointer; }
 .stop-button { height: 30px; padding: 0 10px; border: 1px solid #67413f; background: #332221; color: #ef9a91; }
 
@@ -119,12 +121,15 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .line-number { color: #535865; font-family: Consolas, monospace; font-size: 10px; line-height: 23px; }
 .timeline { min-height: 60px; display: grid; grid-template-columns: auto minmax(100px, 1fr) auto; align-items: center; gap: 14px; padding: 10px 14px; border-top: 1px solid #2b2d35; background: #17181e; }
 .timeline > div { gap: 7px; font-size: 11px; }
-.timeline strong { color: #77c9ba; }
+.timeline > div:first-child { min-width: 0; display: flex; align-items: center; }
+.timeline strong { min-width: 0; overflow: hidden; color: #77c9ba; text-overflow: ellipsis; white-space: nowrap; }
 .timeline-track { height: 4px; border-radius: 2px; overflow: hidden; background: #30323a; }
 .timeline-track span { display: block; width: 34%; height: 100%; background: #60c2b2; }
 
 .queue-state { gap: 6px; color: #77c9ba; font-size: 11px; }
 .queue-state span { width: 7px; height: 7px; border-radius: 50%; background: #60c2b2; }
+.queue-state--failed { color: #df8e84; }
+.queue-state--failed span { background: #cf665b; }
 .result-list { min-height: 0; padding: 8px; overflow: auto; display: grid; align-content: start; gap: 8px; }
 .result-card { padding: 10px; border: 1px solid #343640; border-radius: 6px; background: #1b1c22; }
 .result-card header, .result-card header > div, .result-card footer { display: flex; align-items: center; }
@@ -132,8 +137,14 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .result-card header > div { min-width: 0; gap: 7px; }
 .result-card header strong { font-size: 12px; }
 .result-card header span, .render-time { color: #868a97; font-size: 10px; }
+.render-time { max-width: 48%; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .result-card p { margin: 8px 0; color: #d6d8df; font-size: 12px; line-height: 1.55; }
 .result-card .waveform { height: 54px; }
+.job-progress { position: relative; height: 16px; margin: 6px 0; overflow: hidden; border: 1px solid #30323b; border-radius: 3px; background: #111217; }
+.job-progress > span { display: block; height: 100%; background: #477f76; transition: width 180ms ease; }
+.job-progress > small { position: absolute; inset: 0 5px; overflow: hidden; color: #c9d9d6; font-size: 9px; line-height: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.job-progress--failed > span { background: #7b3934; }
+.job-progress--complete > span { background: #376b62; }
 .result-card footer { gap: 4px; padding-top: 6px; }
 .spacer { flex: 1; }
 .export-bar { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-top: 1px solid #2b2d35; background: #17181e; }

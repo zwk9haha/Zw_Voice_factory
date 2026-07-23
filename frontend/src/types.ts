@@ -56,6 +56,32 @@ export interface WorkspacePayload {
   segments: DirectorSegment[];
 }
 
+export type AudioJobKind = "voxcpm_reference" | "quality_render";
+export type AudioJobStatus = "queued" | "running" | "complete" | "failed";
+
+export interface AudioJobRequest {
+  kind: AudioJobKind;
+  text: string;
+  character_id?: string;
+  segment_id?: string;
+  voice_prompt?: string;
+  reference_audio_url?: string;
+}
+
+export interface AudioJob {
+  job_id: string;
+  kind: AudioJobKind;
+  status: AudioJobStatus;
+  progress: number;
+  message: string;
+  character_id: string | null;
+  segment_id: string | null;
+  output_url: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type PreparationStatus = "imported" | "analyzed" | "characters_ready" | "director_ready";
 export type PreparationAction = "analyze" | "extract_characters" | "generate_director";
 

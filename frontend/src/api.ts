@@ -1,4 +1,4 @@
-import type { PreparationAction, PreparationPreview, SourceSummary, WorkspacePayload } from "./types";
+import type { AudioJob, AudioJobRequest, PreparationAction, PreparationPreview, SourceSummary, WorkspacePayload } from "./types";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -41,4 +41,18 @@ export async function runPreparationAction(projectId: string, action: Preparatio
       body: JSON.stringify({ action }),
     }),
   );
+}
+
+export async function createAudioJob(request: AudioJobRequest): Promise<AudioJob> {
+  return responseJson<AudioJob>(
+    await fetch("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }),
+  );
+}
+
+export async function fetchAudioJob(jobId: string): Promise<AudioJob> {
+  return responseJson<AudioJob>(await fetch(`/api/jobs/${encodeURIComponent(jobId)}`));
 }
