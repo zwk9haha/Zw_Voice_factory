@@ -1,6 +1,7 @@
 # Zw Voice Factory Agent Instructions
 
-- Start the application only with `Start-ZwVoice.cmd run`.
+- Start the application only with `Start-ZwVoice.cmd run`; it creates the visible owner console and returns.
+- Poll readiness with `Start-ZwVoice.cmd status` after starting. Never bypass the visible owner by invoking the PowerShell script directly.
 - Run all automated verification only with `Start-ZwVoice.cmd test`.
 - Check an existing runtime with `Start-ZwVoice.cmd status` before starting another instance.
 - Stop launcher-managed services only with `Start-ZwVoice.cmd stop`.

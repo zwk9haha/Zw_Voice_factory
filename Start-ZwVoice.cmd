@@ -3,6 +3,8 @@ setlocal
 chcp 65001 >nul
 title Zw Voice Factory Launcher
 
+if /i "%~1"=="run" goto launch_visible
+if /i "%~1"=="own" goto own
 if not "%~1"=="" goto direct
 
 :menu
@@ -37,6 +39,25 @@ exit /b 0
 :direct
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start_factory.ps1" %*
 exit /b %ERRORLEVEL%
+
+:launch_visible
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start_factory.ps1" status >nul 2>&1
+if "%ERRORLEVEL%"=="0" (
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start_factory.ps1" run
+    exit /b %ERRORLEVEL%
+)
+start "Zw Voice Factory Owner" "%ComSpec%" /d /c ""%~f0" own"
+exit /b 0
+
+:own
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start_factory.ps1" run
+set "launcher_code=%ERRORLEVEL%"
+if not "%launcher_code%"=="0" (
+    echo.
+    echo Launcher startup failed with exit code %launcher_code%.
+    pause
+)
+exit /b %launcher_code%
 
 :end
 exit /b 0

@@ -43,7 +43,7 @@ Double-click `Start-ZwVoice.cmd` to open the launcher menu. Starting from the me
 .\Start-ZwVoice.cmd run
 ```
 
-The WebUI opens at `http://127.0.0.1:5173/`. Audio-generation progress is printed in the launcher window and shown in the WebUI. Starting again while a healthy launcher-managed instance exists opens that WebUI instead of treating its ports as an error.
+The `run` command creates a separate visible owner console, then returns to the caller. The WebUI opens at `http://127.0.0.1:5173/`. Audio-generation progress is printed in that owner console and shown in the WebUI. Closing the owner console releases its Job Object handle and stops all four managed services. Starting again while a healthy launcher-managed instance exists opens that WebUI instead of treating its ports as an error.
 
 ```powershell
 .\Start-ZwVoice.cmd status
