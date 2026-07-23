@@ -8,7 +8,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import Callable, Literal
 from urllib.parse import unquote, urlsplit
 
 import httpx
@@ -23,6 +23,8 @@ JobStatus = Literal["queued", "running", "complete", "failed"]
 class JobRequest(BaseModel):
     kind: JobKind
     text: str = Field(min_length=1, max_length=2_000)
+    project_id: str | None = Field(default=None, max_length=120)
+    reference_id: str | None = Field(default=None, max_length=120)
     character_id: str | None = Field(default=None, max_length=120)
     segment_id: str | None = Field(default=None, max_length=120)
     voice_prompt: str = Field(default="自然、清晰、稳定", max_length=1_000)
@@ -35,6 +37,8 @@ class JobRecord(BaseModel):
     status: JobStatus
     progress: int = Field(ge=0, le=100)
     message: str
+    project_id: str | None = None
+    reference_id: str | None = None
     character_id: str | None = None
     segment_id: str | None = None
     output_url: str | None = None
@@ -137,10 +141,19 @@ class HttpModelGateway(ModelGateway):
         return {"status": "ready" if ready else "unavailable", "url": base_url}
 
 
+ReferenceEventHandler = Callable[[str, str, str, JobStatus, str | None, str | None], None]
+
+
 class JobService:
-    def __init__(self, workspace_root: Path, gateway: ModelGateway) -> None:
+    def __init__(
+        self,
+        workspace_root: Path,
+        gateway: ModelGateway,
+        reference_event_handler: ReferenceEventHandler | None = None,
+    ) -> None:
         self.workspace_root = workspace_root.resolve()
         self.gateway = gateway
+        self.reference_event_handler = reference_event_handler
         self.audio_root = self.workspace_root / "outputs" / "audio" / "jobs"
         self.state_root = self.workspace_root / "outputs" / "jobs"
         self.audio_root.mkdir(parents=True, exist_ok=True)
@@ -155,6 +168,8 @@ class JobService:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def submit(self, request: JobRequest) -> JobRecord:
+        if bool(request.project_id) != bool(request.reference_id):
+            raise JobProblem(422, "项目参考任务必须同时提供 project_id 和 reference_id")
         reference_path: Path | None = None
         if request.kind == "quality_render":
             if not request.reference_audio_url:
@@ -169,6 +184,8 @@ class JobService:
             status="queued",
             progress=0,
             message="已进入 GPU 队列",
+            project_id=request.project_id,
+            reference_id=request.reference_id,
             character_id=request.character_id,
             segment_id=request.segment_id,
             created_at=now,
@@ -178,6 +195,14 @@ class JobService:
             self._jobs[job_id] = record
             self._requests[job_id] = (request, reference_path)
             self._persist(record)
+        try:
+            self._notify_reference(request, job_id, "queued")
+        except Exception as exc:
+            with self._lock:
+                self._jobs.pop(job_id, None)
+                self._requests.pop(job_id, None)
+                (self.state_root / f"{job_id}.json").unlink(missing_ok=True)
+            raise JobProblem(getattr(exc, "status_code", 409), str(exc)) from exc
         self._log(record)
         self._executor.submit(self._run, job_id)
         return record.model_copy(deep=True)
@@ -199,6 +224,7 @@ class JobService:
             request, reference_path = self._requests[job_id]
             service_name = "VoxCPM2" if request.kind == "voxcpm_reference" else "GPT-SoVITS"
             self._update(job_id, status="running", progress=15, message=f"正在提交到 {service_name}")
+            self._notify_reference(request, job_id, "running")
             if request.kind == "voxcpm_reference":
                 audio = self.gateway.generate_voxcpm(request.text, request.voice_prompt)
             else:
@@ -209,14 +235,21 @@ class JobService:
             temporary = output.with_suffix(".wav.tmp")
             temporary.write_bytes(audio)
             temporary.replace(output)
+            output_url = f"/media/outputs/audio/jobs/{job_id}.wav"
+            self._notify_reference(request, job_id, "complete", output_url=output_url)
             self._update(
                 job_id,
                 status="complete",
                 progress=100,
                 message="音频生成完成",
-                output_url=f"/media/outputs/audio/jobs/{job_id}.wav",
+                output_url=output_url,
             )
         except Exception as exc:  # The failure is surfaced through the job record and console.
+            try:
+                request, _ = self._requests[job_id]
+                self._notify_reference(request, job_id, "failed", error=str(exc))
+            except Exception:
+                pass
             self._update(job_id, status="failed", message="音频生成失败", error=str(exc))
         finally:
             with self._lock:
@@ -250,6 +283,29 @@ class JobService:
                     return candidate
                 break
         raise JobProblem(400, "参考音频路径无效或文件不存在")
+
+    def _notify_reference(
+        self,
+        request: JobRequest,
+        job_id: str,
+        status: JobStatus,
+        output_url: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        if (
+            request.kind == "voxcpm_reference"
+            and request.project_id
+            and request.reference_id
+            and self.reference_event_handler
+        ):
+            self.reference_event_handler(
+                request.project_id,
+                request.reference_id,
+                job_id,
+                status,
+                output_url,
+                error,
+            )
 
     def _persist(self, record: JobRecord) -> None:
         target = self.state_root / f"{record.job_id}.json"

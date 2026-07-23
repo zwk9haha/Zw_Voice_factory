@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .jobs import HttpModelGateway, JobService, ModelGateway, create_jobs_router
 from .preparation import PreparationService, create_preparation_router
+from .resources import create_resources_router
 from .workspace import WorkspacePayload, build_demo_workspace
 
 
@@ -17,7 +18,12 @@ DEFAULT_WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 
 def create_app(workspace_root: Path | None = None, model_gateway: ModelGateway | None = None) -> FastAPI:
     root = (workspace_root or DEFAULT_WORKSPACE_ROOT).resolve()
-    jobs = JobService(root, model_gateway or HttpModelGateway())
+    preparation = PreparationService(root)
+    jobs = JobService(
+        root,
+        model_gateway or HttpModelGateway(),
+        reference_event_handler=preparation.record_reference_job,
+    )
     application = FastAPI(title="Zw Voice Factory API", version="0.2.0")
     application.add_middleware(
         CORSMiddleware,
@@ -38,8 +44,9 @@ def create_app(workspace_root: Path | None = None, model_gateway: ModelGateway |
         StaticFiles(directory=root / "outputs" / "audio"),
         name="output-audio",
     )
-    application.include_router(create_preparation_router(PreparationService(root)))
+    application.include_router(create_preparation_router(preparation))
     application.include_router(create_jobs_router(jobs))
+    application.include_router(create_resources_router())
     application.router.add_event_handler("shutdown", jobs.close)
 
     @application.get("/api/health")

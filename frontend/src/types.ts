@@ -62,6 +62,8 @@ export type AudioJobStatus = "queued" | "running" | "complete" | "failed";
 export interface AudioJobRequest {
   kind: AudioJobKind;
   text: string;
+  project_id?: string;
+  reference_id?: string;
   character_id?: string;
   segment_id?: string;
   voice_prompt?: string;
@@ -74,6 +76,8 @@ export interface AudioJob {
   status: AudioJobStatus;
   progress: number;
   message: string;
+  project_id: string | null;
+  reference_id: string | null;
   character_id: string | null;
   segment_id: string | null;
   output_url: string | null;
@@ -128,8 +132,30 @@ export interface PreparedCharacter {
   confidence: number;
   importance: number;
   tier: "core" | "supporting" | "minor" | "uncertain";
+  gender: "male" | "female" | "unknown";
   voice_prompt: string;
   evidence: Array<{ chapter_id: string; segment_id: string; text: string; evidence_type: string }>;
+}
+
+export type ReferenceSelectionMode = "automatic" | "optional" | "narrator_default";
+export type ReferenceGenerationStatus = "not_generated" | "queued" | "running" | "generated" | "failed";
+
+export interface ReferencePlanItem {
+  reference_id: string;
+  source_character_id: string;
+  display_name: string;
+  gender: "male" | "female" | "unknown";
+  importance: number;
+  selection_mode: ReferenceSelectionMode;
+  selected: boolean;
+  locked: boolean;
+  reference_text: string;
+  voice_prompt: string;
+  reuse_reference_id: string | null;
+  job_id: string | null;
+  audio_url: string | null;
+  status: ReferenceGenerationStatus;
+  error: string | null;
 }
 
 export interface PreparedDirectorSegment {
@@ -161,10 +187,31 @@ export interface PreparationPreview {
     source_text: string;
     characters: PreparedCharacter[];
   } | null;
+  reference_plan: {
+    schema_version: number;
+    project_id: string;
+    generation_backend: "voxcpm2";
+    automatic_threshold: number;
+    items: ReferencePlanItem[];
+  } | null;
   director_doc: {
     schema_version: number;
     project_id: string;
     character_bible_id: string;
     segments: PreparedDirectorSegment[];
   } | null;
+}
+
+export interface SystemResources {
+  cpu: { percent: number };
+  memory: { percent: number; used_gb: number; total_gb: number };
+  gpu: {
+    available: boolean;
+    name: string | null;
+    percent: number | null;
+    memory_percent: number | null;
+    used_mb: number | null;
+    total_mb: number | null;
+  };
+  timestamp: string;
 }

@@ -250,7 +250,7 @@ export function PreparationWorkspace(props: PreparationWorkspaceProps) {
   if (activeStage === "template") {
     return <TemplateWorkspace {...props} />;
   }
-  if (activeStage === "source" || activeStage === "casting" || activeStage === "director") {
+  if (activeStage === "source" || activeStage === "casting" || activeStage === "references" || activeStage === "director") {
     return <ProjectPreparationWorkspace activeStage={activeStage} onStageChange={props.onStageChange} />;
   }
   return <GenericPreparationWorkspace {...props} activeStage={activeStage} />;

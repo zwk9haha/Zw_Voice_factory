@@ -1,14 +1,16 @@
-import { ArrowRight, Check, CircleAlert, FileText, LoaderCircle, Play, RefreshCw, SlidersHorizontal, Upload, Users } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, FileText, LoaderCircle, Lock, Mic2, Play, Plus, RefreshCw, RotateCcw, SlidersHorizontal, Upload, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { fetchPreparationPreview, fetchSources, importTxtSource, runPreparationAction } from "./api";
+import { createAudioJob, fetchAudioJob, fetchPreparationPreview, fetchSources, importTxtSource, runPreparationAction, updateReferenceSelection } from "./api";
 import type {
+  AudioJob,
   PreparationAction,
   PreparationPreview,
   ProductionStageId,
+  ReferencePlanItem,
   SourceSummary,
 } from "./types";
 
-type ProjectPreparationStage = "source" | "casting" | "director";
+type ProjectPreparationStage = "source" | "casting" | "references" | "director";
 
 interface ProjectPreparationWorkspaceProps {
   activeStage: ProjectPreparationStage;
@@ -27,6 +29,22 @@ const actionLabel: Record<PreparationAction, string> = {
   extract_characters: "提取角色",
   generate_director: "生成导演文件",
 };
+
+const genderLabel: Record<ReferencePlanItem["gender"], string> = {
+  male: "男声",
+  female: "女声",
+  unknown: "性别待确认",
+};
+
+const referenceStatusLabel: Record<ReferencePlanItem["status"], string> = {
+  not_generated: "待生成",
+  queued: "排队中",
+  running: "生成中",
+  generated: "可试听",
+  failed: "生成失败",
+};
+
+const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -82,7 +100,8 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreparationPreview | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [busy, setBusy] = useState<PreparationAction | "upload" | "refresh" | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [referenceJobs, setReferenceJobs] = useState<Record<string, AudioJob>>({});
   const [feedback, setFeedback] = useState("选择 TXT 后开始准备流程");
   const [showPreview, setShowPreview] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -90,8 +109,10 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
   const selectedSource = sources.find((source) => source.project_id === selectedProjectId) ?? null;
   const candidates = preview?.analysis_audit?.candidates ?? [];
   const segments = preview?.director_doc?.segments ?? [];
-  const selectedCandidate = candidates[selectedIndex] ?? null;
+  const referenceItems = preview?.reference_plan?.items ?? [];
+  const selectedReferences = referenceItems.filter((item) => item.selected);
   const selectedSegment = segments[selectedIndex] ?? null;
+  const selectedReference = (activeStage === "references" ? selectedReferences : referenceItems)[selectedIndex] ?? null;
 
   useEffect(() => {
     let active = true;
@@ -200,14 +221,87 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
     }
   }
 
-  const stageTitle = activeStage === "source" ? "小说导入" : activeStage === "casting" ? "角色候选审核" : "逐句导演";
-  const stageEyebrow = activeStage === "source" ? "SOURCE TEXT" : activeStage === "casting" ? "CAST AUDIT" : "DIRECTOR DOCUMENT";
-  const StageIcon = activeStage === "source" ? FileText : activeStage === "casting" ? Users : SlidersHorizontal;
-  const acceptedCount = candidates.filter((candidate) => candidate.decision === "accepted").length;
-  const rejectedCount = candidates.filter((candidate) => candidate.decision === "rejected").length;
-  const aliasNames = new Set(preview?.character_voice_bible?.characters.flatMap((character) => character.aliases) ?? []);
-  const acceptedIdentityCount = preview?.character_voice_bible?.characters.filter((character) => character.character_id !== "narrator").length ?? 0;
+  async function toggleReference(item: ReferencePlanItem): Promise<void> {
+    if (!selectedProjectId || item.locked) return;
+    setBusy(`selection:${item.reference_id}`);
+    try {
+      setPreview(await updateReferenceSelection(selectedProjectId, item.reference_id, !item.selected));
+      setFeedback(item.selected ? `${item.display_name} 将复用${item.gender === "female" ? "女" : "男"}旁白` : `${item.display_name} 已加入参考生成`);
+    } catch (error) {
+      setFeedback(errorMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function pollReferenceJob(referenceId: string, jobId: string): Promise<AudioJob> {
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      const job = await fetchAudioJob(jobId);
+      setReferenceJobs((current) => ({ ...current, [referenceId]: job }));
+      if (job.status === "complete" || job.status === "failed") return job;
+      await wait(800);
+    }
+    throw new Error("音频生成超时，请在任务队列中检查状态");
+  }
+
+  async function submitReference(item: ReferencePlanItem): Promise<AudioJob> {
+    if (!selectedProjectId) throw new Error("请先选择项目");
+    const job = await createAudioJob({
+      kind: "voxcpm_reference",
+      project_id: selectedProjectId,
+      reference_id: item.reference_id,
+      character_id: item.source_character_id,
+      text: item.reference_text,
+      voice_prompt: item.voice_prompt,
+    });
+    setReferenceJobs((current) => ({ ...current, [item.reference_id]: job }));
+    return pollReferenceJob(item.reference_id, job.job_id);
+  }
+
+  async function generateReference(item: ReferencePlanItem): Promise<void> {
+    if (!selectedProjectId) return;
+    setBusy(`reference:${item.reference_id}`);
+    setFeedback(`${item.display_name} 已提交 VoxCPM2`);
+    try {
+      const completed = await submitReference(item);
+      if (completed.status === "failed") throw new Error(completed.error ?? "音频生成失败");
+      setPreview(await fetchPreparationPreview(selectedProjectId));
+      setFeedback(`${item.display_name} 参考音频已生成，可以试听`);
+    } catch (error) {
+      setFeedback(errorMessage(error));
+      setPreview(await fetchPreparationPreview(selectedProjectId).catch(() => preview));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generateSelectedReferences(): Promise<void> {
+    if (!selectedProjectId) return;
+    const pending = selectedReferences.filter((item) => item.status !== "generated" && item.status !== "queued" && item.status !== "running");
+    if (!pending.length) {
+      setFeedback("所有已选参考均已生成");
+      return;
+    }
+    setBusy("batch_references");
+    setFeedback(`正在提交 ${pending.length} 条 VoxCPM2 参考任务`);
+    try {
+      const completed = await Promise.all(pending.map((item) => submitReference(item)));
+      const failed = completed.filter((job) => job.status === "failed");
+      setPreview(await fetchPreparationPreview(selectedProjectId));
+      setFeedback(failed.length ? `${completed.length - failed.length} 条完成，${failed.length} 条失败` : `${completed.length} 条参考音频已生成`);
+    } catch (error) {
+      setFeedback(errorMessage(error));
+      setPreview(await fetchPreparationPreview(selectedProjectId).catch(() => preview));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const stageTitle = activeStage === "source" ? "小说导入" : activeStage === "casting" ? "角色候选审核" : activeStage === "references" ? "中性标准参考" : "逐句导演";
+  const stageEyebrow = activeStage === "source" ? "SOURCE TEXT" : activeStage === "casting" ? "CAST AUDIT" : activeStage === "references" ? "CANONICAL REFERENCES" : "DIRECTOR DOCUMENT";
   const characterNames = new Map(preview?.character_voice_bible?.characters.map((character) => [character.character_id, character.display_name]));
+  const selectedPreparedCharacter = preview?.character_voice_bible?.characters.find((character) => character.character_id === selectedReference?.source_character_id) ?? null;
+  const selectedReferenceCandidate = candidates.find((candidate) => candidate.display_name === selectedReference?.display_name) ?? null;
   const isBusy = busy !== null;
 
   const sourceFields = selectedSource ? [
@@ -219,12 +313,23 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
     { label: "预计片段", value: preview?.analysis_audit ? `${preview.analysis_audit.structure.estimated_segment_count} 句` : "分析后生成" },
   ] : [];
 
-  const castingFields = selectedCandidate ? [
-    { label: "候选角色", value: selectedCandidate.display_name },
-    { label: "审核决定", value: aliasNames.has(selectedCandidate.display_name) ? "已作为别名合并" : selectedCandidate.decision === "accepted" ? "已接纳" : selectedCandidate.decision === "rejected" ? "已排除" : "待提取" },
-    { label: "识别置信度", value: `${Math.round(selectedCandidate.confidence * 100)}%` },
-    { label: "提及 / 对话", value: `${selectedCandidate.mention_count} / ${selectedCandidate.dialogue_count}` },
-    { label: "判断依据", value: selectedCandidate.reason },
+  const fallbackReference = referenceItems.find((item) => item.reference_id === selectedReference?.reuse_reference_id) ?? null;
+  const castingFields = selectedReference ? [
+    { label: "角色", value: selectedReference.display_name },
+    { label: "识别性别", value: genderLabel[selectedReference.gender] },
+    { label: "角色权重", value: `${Math.round(selectedReference.importance * 100)}%` },
+    { label: "生成规则", value: selectedReference.selection_mode === "narrator_default" ? "默认生成并锁定" : selectedReference.selection_mode === "automatic" ? `达到 ${Math.round((preview?.reference_plan?.automatic_threshold ?? 0.75) * 100)}% 阈值，自动生成` : selectedReference.selected ? "用户已加入生成" : "低于阈值，复用旁白" },
+    { label: "未生成时复用", value: fallbackReference?.display_name ?? "独立参考" },
+    { label: "声线描述", value: selectedReference.voice_prompt },
+  ] : [];
+
+  const currentReferenceJob = selectedReference ? referenceJobs[selectedReference.reference_id] : null;
+  const referenceFields = selectedReference ? [
+    { label: "生成后端", value: "VoxCPM2" },
+    { label: "当前状态", value: currentReferenceJob?.message ?? referenceStatusLabel[selectedReference.status] },
+    { label: "任务进度", value: currentReferenceJob ? `${currentReferenceJob.progress}%` : selectedReference.status === "generated" ? "100%" : "尚未提交" },
+    { label: "声线描述", value: selectedReference.voice_prompt },
+    { label: "参考用途", value: selectedReference.selection_mode === "narrator_default" ? "默认旁白与低权重角色复用" : "角色中性身份锚点" },
   ] : [];
 
   const directorFields = selectedSegment ? [
@@ -235,24 +340,36 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
     { label: "句后停顿", value: `${selectedSegment.direction.pause_after_ms} ms` },
   ] : [];
 
-  const fields = activeStage === "source" ? sourceFields : activeStage === "casting" ? castingFields : directorFields;
+  const fields = activeStage === "source" ? sourceFields : activeStage === "casting" ? castingFields : activeStage === "references" ? referenceFields : directorFields;
   const canExtract = preview?.analysis_audit !== null && preview?.analysis_audit !== undefined;
   const canGenerateDirector = preview?.character_voice_bible !== null && preview?.character_voice_bible !== undefined;
-  const canAdvanceSource = canGenerateDirector;
+  const canAdvanceSource = canGenerateDirector && preview?.reference_plan !== null;
+  const generatedReferenceCount = selectedReferences.filter((item) => item.status === "generated").length;
+  const allReferencesGenerated = selectedReferences.length > 0 && generatedReferenceCount === selectedReferences.length;
 
   return (
     <section className="prep-workspace project-preparation">
       <aside className="prep-list-pane">
-        <div className="pane-heading"><div><span className="eyebrow">{stageEyebrow}</span><h2>{stageTitle}</h2></div><span className="list-count">{activeStage === "source" ? sources.length : activeStage === "casting" ? candidates.length : segments.length}</span></div>
+        <div className="pane-heading"><div><span className="eyebrow">{stageEyebrow}</span><h2>{stageTitle}</h2></div><span className="list-count">{activeStage === "source" ? sources.length : activeStage === "casting" ? referenceItems.length : activeStage === "references" ? selectedReferences.length : segments.length}</span></div>
         <div className="prep-list">
           {activeStage === "source" && sources.map((source) => (
             <button key={source.project_id} className={source.project_id === selectedProjectId ? "selected" : ""} onClick={() => setSelectedProjectId(source.project_id)}>
               <FileText size={16} /><span><strong>{source.file_name}</strong><small>{formatBytes(source.size_bytes)} · {source.encoding.toUpperCase()}</small></span><em>{statusLabel[source.status]}</em>
             </button>
           ))}
-          {activeStage === "casting" && candidates.map((candidate, index) => (
-            <button key={candidate.candidate_id} className={index === selectedIndex ? "selected" : ""} onClick={() => setSelectedIndex(index)}>
-              <Users size={16} /><span><strong>{candidate.display_name}</strong><small>提及 {candidate.mention_count} · 对话 {candidate.dialogue_count}</small></span><em>{aliasNames.has(candidate.display_name) ? "已合并" : candidate.decision === "accepted" ? "已接纳" : candidate.decision === "rejected" ? "已排除" : "待提取"}</em>
+          {activeStage === "casting" && referenceItems.map((item, index) => (
+            <div key={item.reference_id} className={`reference-cast-row ${index === selectedIndex ? "selected" : ""}`}>
+              <button className="reference-character-select" onClick={() => setSelectedIndex(index)}>
+                <Users size={16} /><span><strong>{item.display_name}</strong><small>{genderLabel[item.gender]} · 权重 {Math.round(item.importance * 100)}%</small></span><em>{item.selection_mode === "automatic" ? "自动" : item.selection_mode === "narrator_default" ? "默认" : item.selected ? "已选择" : "复用旁白"}</em>
+              </button>
+              <button className={`reference-select-toggle ${item.selected ? "active" : ""}`} title={item.locked ? "达到权重阈值，已自动加入生成" : item.selected ? "取消独立参考，改用旁白" : "加入 VoxCPM2 参考生成"} disabled={isBusy || item.locked} onClick={() => void toggleReference(item)}>
+                {item.locked ? <Lock size={13} /> : item.selected ? <Check size={14} /> : <Plus size={14} />}
+              </button>
+            </div>
+          ))}
+          {activeStage === "references" && selectedReferences.map((item, index) => (
+            <button key={item.reference_id} className={index === selectedIndex ? "selected" : ""} onClick={() => setSelectedIndex(index)}>
+              <Mic2 size={16} /><span><strong>{item.display_name}</strong><small>{genderLabel[item.gender]} · VoxCPM2 中性参考</small></span><em>{referenceStatusLabel[item.status]}</em>
             </button>
           ))}
           {activeStage === "director" && segments.slice(0, 500).map((segment, index) => (
@@ -260,8 +377,8 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
               <SlidersHorizontal size={16} /><span><strong>{segment.segment_id} · {characterNames.get(segment.character_id) ?? segment.character_id}</strong><small>{segment.text}</small></span><em>{segment.direction.emotion}</em>
             </button>
           ))}
-          {!isBusy && ((activeStage === "source" && !sources.length) || (activeStage === "casting" && !candidates.length) || (activeStage === "director" && !segments.length)) && <p className="empty-state">当前阶段还没有可显示的数据。</p>}
-          {isBusy && activeStage !== "source" && <p className="empty-state"><LoaderCircle className="spin" size={15} />正在读取产物</p>}
+          {!isBusy && ((activeStage === "source" && !sources.length) || (activeStage === "casting" && !referenceItems.length) || (activeStage === "references" && !selectedReferences.length) || (activeStage === "director" && !segments.length)) && <p className="empty-state">当前阶段还没有可显示的数据。</p>}
+          {busy === "refresh" && activeStage !== "source" && <p className="empty-state"><LoaderCircle className="spin" size={15} />正在读取产物</p>}
         </div>
         {activeStage === "source" && (
           <>
@@ -273,7 +390,7 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
 
       <section className="prep-main-pane">
         <div className="prep-titlebar">
-          <div><span className="eyebrow">CURRENT PROJECT</span><h2>{activeStage === "source" ? selectedSource?.file_name ?? "等待导入" : activeStage === "casting" ? selectedCandidate?.display_name ?? "等待角色提取" : selectedSegment?.segment_id ?? "等待导演文件"}</h2></div>
+          <div><span className="eyebrow">CURRENT PROJECT</span><h2>{activeStage === "source" ? selectedSource?.file_name ?? "等待导入" : activeStage === "casting" || activeStage === "references" ? selectedReference?.display_name ?? "等待角色提取" : selectedSegment?.segment_id ?? "等待导演文件"}</h2></div>
           <button className="icon-button" title="刷新源文件与产物" disabled={isBusy} onClick={() => void refresh()}>{busy === "refresh" ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}</button>
         </div>
         {activeStage === "source" && (
@@ -291,7 +408,18 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
               {fields.map((field) => <div key={field.label}><span>{field.label}</span><strong>{field.value}</strong></div>)}
               {!fields.length && <p className="empty-state">完成前置操作后，这里会显示真实产物字段。</p>}
             </div>
-            {activeStage === "casting" && selectedCandidate && <div className="evidence-block"><span>证据摘录</span>{selectedCandidate.evidence.length ? selectedCandidate.evidence.map((evidence, index) => <p key={`${selectedCandidate.candidate_id}:${index}`}>{evidence}</p>) : <p>没有直接对话证据。</p>}</div>}
+            {activeStage === "casting" && selectedReference && <div className="evidence-block"><span>证据摘录</span>{selectedReferenceCandidate?.evidence.length ? selectedReferenceCandidate.evidence.map((evidence, index) => <p key={`${selectedReference.reference_id}:${index}`}>{evidence}</p>) : selectedPreparedCharacter?.evidence.length ? selectedPreparedCharacter.evidence.map((evidence) => <p key={evidence.segment_id}>{evidence.text}</p>) : <p>默认旁白不依赖角色对话证据。</p>}</div>}
+            {activeStage === "references" && selectedReference && (
+              <section className="reference-preview">
+                <div className="reference-copy"><span>标准参考文本</span><p>{selectedReference.reference_text}</p></div>
+                {currentReferenceJob && currentReferenceJob.status !== "complete" && (
+                  <div className={`job-progress ${currentReferenceJob.status === "failed" ? "job-progress--failed" : ""}`}><span style={{ width: `${currentReferenceJob.progress}%` }} /><small>{currentReferenceJob.message}</small></div>
+                )}
+                {selectedReference.audio_url ? <audio controls preload="metadata" src={selectedReference.audio_url} aria-label={`${selectedReference.display_name}参考音频试听`} /> : <p className="reference-empty-audio">生成完成后可在这里试听。</p>}
+                {selectedReference.error && <p className="reference-error">{selectedReference.error}</p>}
+                <button className="secondary-button" disabled={isBusy} onClick={() => void generateReference(selectedReference)}>{selectedReference.status === "generated" ? <RotateCcw size={14} /> : <Mic2 size={14} />}{selectedReference.status === "generated" ? "重新生成" : "生成预览"}</button>
+              </section>
+            )}
             {activeStage === "director" && selectedSegment && <div className="evidence-block"><span>朗读文本</span><p>{selectedSegment.text}</p></div>}
           </>
         )}
@@ -310,10 +438,18 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
           )}
           {activeStage === "casting" && (
             <>
-              <div><Check size={15} /><span>候选总数</span><strong>{candidates.length}</strong></div>
-              <div><Check size={15} /><span>角色身份</span><strong>{acceptedIdentityCount}</strong></div>
-              <div><Check size={15} /><span>别名合并</span><strong>{acceptedCount - acceptedIdentityCount}</strong></div>
-              <div className={rejectedCount ? "attention" : ""}>{rejectedCount ? <CircleAlert size={15} /> : <Check size={15} />}<span>误判排除</span><strong>{rejectedCount}</strong></div>
+              <div><Check size={15} /><span>默认旁白</span><strong>男 / 女</strong></div>
+              <div><Check size={15} /><span>自动生成</span><strong>{referenceItems.filter((item) => item.selection_mode !== "optional").length}</strong></div>
+              <div><Check size={15} /><span>手动加入</span><strong>{referenceItems.filter((item) => item.selection_mode === "optional" && item.selected).length}</strong></div>
+              <div className={referenceItems.some((item) => !item.selected) ? "attention" : ""}><CircleAlert size={15} /><span>复用旁白</span><strong>{referenceItems.filter((item) => !item.selected).length}</strong></div>
+            </>
+          )}
+          {activeStage === "references" && (
+            <>
+              <div><Check size={15} /><span>已选参考</span><strong>{selectedReferences.length}</strong></div>
+              <div><Check size={15} /><span>生成完成</span><strong>{generatedReferenceCount} / {selectedReferences.length}</strong></div>
+              <div className={selectedReferences.some((item) => item.status === "failed") ? "attention" : ""}><CircleAlert size={15} /><span>失败任务</span><strong>{selectedReferences.filter((item) => item.status === "failed").length}</strong></div>
+              <div><Check size={15} /><span>未选角色回退</span><strong>{referenceItems.filter((item) => !item.selected).length}</strong></div>
             </>
           )}
           {activeStage === "director" && (
@@ -324,9 +460,10 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
             </>
           )}
         </div>
-        <div className="stage-action">
+        <div className={`stage-action ${activeStage === "references" ? "reference-stage-actions" : ""}`}>
           {activeStage === "source" && <button className="primary-button" disabled={!canAdvanceSource || isBusy} title={!canAdvanceSource ? "请先提取角色" : "进入角色审核"} onClick={() => onStageChange("casting")}>下一步<ArrowRight size={15} /></button>}
-          {activeStage === "casting" && <button className="primary-button" disabled={!canGenerateDirector || isBusy} onClick={() => onStageChange("references")}>进入标准参考<ArrowRight size={15} /></button>}
+          {activeStage === "casting" && <button className="primary-button" disabled={!preview?.reference_plan || isBusy} onClick={() => onStageChange("references")}>进入标准参考<ArrowRight size={15} /></button>}
+          {activeStage === "references" && <><button className="secondary-button" disabled={isBusy || allReferencesGenerated} onClick={() => void generateSelectedReferences()}><Mic2 size={14} />批量生成</button><button className="primary-button" disabled={isBusy || !allReferencesGenerated} onClick={() => onStageChange("emotions")}>进入情绪派生<ArrowRight size={15} /></button></>}
           {activeStage === "director" && <button className="primary-button" disabled={!preview?.director_doc || isBusy} onClick={() => onStageChange("quality_render")}>进入质量渲染<ArrowRight size={15} /></button>}
         </div>
       </aside>

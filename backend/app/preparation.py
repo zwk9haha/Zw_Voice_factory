@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 from pathlib import Path
 from typing import Literal
 
@@ -23,6 +24,13 @@ from .domain import (
 PreparationStatus = Literal["imported", "analyzed", "characters_ready", "director_ready"]
 CandidateDecision = Literal["pending", "accepted", "rejected"]
 PreparationAction = Literal["analyze", "extract_characters", "generate_director"]
+ReferenceSelectionMode = Literal["automatic", "optional", "narrator_default"]
+ReferenceGenerationStatus = Literal["not_generated", "queued", "running", "generated", "failed"]
+
+REFERENCE_GENERATION_THRESHOLD = 0.75
+REFERENCE_TEXT = "雨后的长街渐渐安静下来，我望着远处的灯火，平稳地说出今天的决定。"
+FEMALE_CLUES = ("她", "女子", "少女", "小姐", "母亲", "姐姐", "妹妹", "妻子", "薰", "熏", "嫣", "妃", "仙")
+MALE_CLUES = ("他", "男子", "少年", "先生", "父亲", "哥哥", "老者", "老")
 
 CHAPTER_PATTERN = re.compile(r"^\s*第[零〇一二两三四五六七八九十百千万\d]+[章节回卷].*$", re.MULTILINE)
 SPEECH_VERB = r"(?:说道|问道|答道|喝道|喊道|叫道|笑道|冷声道|沉声道|低声道|高声道|道|说|问|答)"
@@ -151,17 +159,48 @@ class AnalysisAudit(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ReferencePlanItem(BaseModel):
+    reference_id: str
+    source_character_id: str
+    display_name: str
+    gender: Literal["male", "female", "unknown"]
+    importance: float = Field(ge=0, le=1)
+    selection_mode: ReferenceSelectionMode
+    selected: bool
+    locked: bool
+    reference_text: str
+    voice_prompt: str
+    reuse_reference_id: str | None = None
+    job_id: str | None = None
+    audio_url: str | None = None
+    status: ReferenceGenerationStatus = "not_generated"
+    error: str | None = None
+
+
+class ReferencePlan(BaseModel):
+    schema_version: int = 1
+    project_id: str
+    generation_backend: Literal["voxcpm2"] = "voxcpm2"
+    automatic_threshold: float = REFERENCE_GENERATION_THRESHOLD
+    items: list[ReferencePlanItem]
+
+
 class PreparationPreview(BaseModel):
     project_id: str
     status: PreparationStatus
     source: SourceSummary
     analysis_audit: AnalysisAudit | None = None
     character_voice_bible: CharacterVoiceBible | None = None
+    reference_plan: ReferencePlan | None = None
     director_doc: DirectorDocument | None = None
 
 
 class PreparationActionRequest(BaseModel):
     action: PreparationAction
+
+
+class ReferenceSelectionRequest(BaseModel):
+    selected: bool
 
 
 class PreparationService:
@@ -171,6 +210,7 @@ class PreparationService:
         self.workspace_root = workspace_root.resolve()
         self.source_root = self.workspace_root / "input"
         self.project_root = self.workspace_root / "outputs" / "projects"
+        self._reference_lock = threading.RLock()
         self.source_root.mkdir(parents=True, exist_ok=True)
         self.project_root.mkdir(parents=True, exist_ok=True)
 
@@ -205,6 +245,13 @@ class PreparationService:
         _, encoding = self._read_text(source_path)
         audit = self._read_model(project_id, "analysis_audit.json", AnalysisAudit)
         bible = self._read_model(project_id, "character_voice_bible.json", CharacterVoiceBible)
+        reference_plan = self._read_model(project_id, "reference_plan.json", ReferencePlan)
+        if bible is not None and reference_plan is None:
+            with self._reference_lock:
+                reference_plan = self._read_model(project_id, "reference_plan.json", ReferencePlan)
+                if reference_plan is None:
+                    reference_plan = self._build_reference_plan(project_id, bible)
+                    self._write_model(project_id, "reference_plan.json", reference_plan)
         director = self._read_model(project_id, "director_doc.json", DirectorDocument)
         return PreparationPreview(
             project_id=project_id,
@@ -212,6 +259,7 @@ class PreparationService:
             source=self._source_summary(source_path, encoding),
             analysis_audit=audit,
             character_voice_bible=bible,
+            reference_plan=reference_plan,
             director_doc=director,
         )
 
@@ -249,6 +297,7 @@ class PreparationService:
         )
         self._write_model(project_id, "analysis_audit.json", audit)
         self._remove_artifact(project_id, "character_voice_bible.json")
+        self._remove_artifact(project_id, "reference_plan.json")
         self._remove_artifact(project_id, "director_doc.json")
 
     def _extract_characters(self, project_id: str) -> None:
@@ -293,6 +342,7 @@ class PreparationService:
         for candidate in canonical_candidates:
             importance = min(0.95, 0.25 + 0.7 * candidate.mention_count / peak_mentions)
             tier = CharacterTier.core if importance >= 0.75 else CharacterTier.supporting
+            gender = self._infer_gender(candidate.display_name, candidate.evidence)
             characters.append(
                 CharacterVoice(
                     character_id=self._stable_id("character", candidate.display_name),
@@ -301,7 +351,8 @@ class PreparationService:
                     confidence=candidate.confidence,
                     importance=round(importance, 3),
                     tier=tier,
-                    voice_prompt="待角色审核补充声线描述",
+                    gender=gender,
+                    voice_prompt=self._voice_prompt(gender),
                     evidence=[
                         CharacterEvidence(
                             chapter_id="chapter-unknown",
@@ -319,7 +370,127 @@ class PreparationService:
             characters=characters,
         )
         self._write_model(project_id, "character_voice_bible.json", bible)
+        self._write_model(project_id, "reference_plan.json", self._build_reference_plan(project_id, bible))
         self._remove_artifact(project_id, "director_doc.json")
+
+    def update_reference_selection(
+        self,
+        project_id: str,
+        reference_id: str,
+        selected: bool,
+    ) -> PreparationPreview:
+        with self._reference_lock:
+            plan = self._require_model(
+                project_id,
+                "reference_plan.json",
+                ReferencePlan,
+                "请先提取并审核角色",
+            )
+            item = next((candidate for candidate in plan.items if candidate.reference_id == reference_id), None)
+            if item is None:
+                raise PreparationProblem(404, "参考计划项不存在")
+            if item.locked and item.selected != selected:
+                raise PreparationProblem(409, "自动生成项不能取消选择")
+            item.selected = selected
+            self._write_model(project_id, "reference_plan.json", plan)
+        return self.preview(project_id)
+
+    def record_reference_job(
+        self,
+        project_id: str,
+        reference_id: str,
+        job_id: str,
+        status: Literal["queued", "running", "complete", "failed"],
+        audio_url: str | None,
+        error: str | None,
+    ) -> None:
+        with self._reference_lock:
+            plan = self._require_model(
+                project_id,
+                "reference_plan.json",
+                ReferencePlan,
+                "参考计划不存在",
+            )
+            item = next((candidate for candidate in plan.items if candidate.reference_id == reference_id), None)
+            if item is None:
+                raise PreparationProblem(404, "参考计划项不存在")
+            if status == "queued" and not item.selected:
+                raise PreparationProblem(409, "请先将该角色加入参考生成")
+            item.job_id = job_id
+            item.status = "generated" if status == "complete" else status
+            item.audio_url = audio_url or item.audio_url
+            item.error = error
+            self._write_model(project_id, "reference_plan.json", plan)
+
+    def _build_reference_plan(self, project_id: str, bible: CharacterVoiceBible) -> ReferencePlan:
+        male_reference_id = self._stable_id("reference", f"{project_id}:narrator:male")
+        female_reference_id = self._stable_id("reference", f"{project_id}:narrator:female")
+        items = [
+            ReferencePlanItem(
+                reference_id=male_reference_id,
+                source_character_id="narrator",
+                display_name="男旁白",
+                gender="male",
+                importance=1,
+                selection_mode="narrator_default",
+                selected=True,
+                locked=True,
+                reference_text=REFERENCE_TEXT,
+                voice_prompt="成熟、清晰、稳定的男性叙述声线",
+            ),
+            ReferencePlanItem(
+                reference_id=female_reference_id,
+                source_character_id="narrator",
+                display_name="女旁白",
+                gender="female",
+                importance=1,
+                selection_mode="narrator_default",
+                selected=True,
+                locked=True,
+                reference_text=REFERENCE_TEXT,
+                voice_prompt="成熟、清晰、稳定的女性叙述声线",
+            ),
+        ]
+        for character in bible.characters:
+            if character.character_id == "narrator":
+                continue
+            automatic = character.importance >= REFERENCE_GENERATION_THRESHOLD
+            gender = character.gender if character.gender in {"male", "female"} else "unknown"
+            items.append(
+                ReferencePlanItem(
+                    reference_id=self._stable_id("reference", f"{project_id}:{character.character_id}:neutral"),
+                    source_character_id=character.character_id,
+                    display_name=character.display_name,
+                    gender=gender,
+                    importance=character.importance,
+                    selection_mode="automatic" if automatic else "optional",
+                    selected=automatic,
+                    locked=automatic,
+                    reference_text=REFERENCE_TEXT,
+                    voice_prompt=character.voice_prompt,
+                    reuse_reference_id=female_reference_id if gender == "female" else male_reference_id,
+                )
+            )
+        return ReferencePlan(project_id=project_id, items=items)
+
+    @staticmethod
+    def _infer_gender(display_name: str, evidence: list[str]) -> Literal["male", "female", "unknown"]:
+        context = " ".join([display_name, *evidence])
+        female_score = sum(context.count(clue) for clue in FEMALE_CLUES)
+        male_score = sum(context.count(clue) for clue in MALE_CLUES)
+        if female_score > male_score:
+            return "female"
+        if male_score > female_score:
+            return "male"
+        return "unknown"
+
+    @staticmethod
+    def _voice_prompt(gender: Literal["male", "female", "unknown"]) -> str:
+        if gender == "female":
+            return "自然、清晰、有辨识度的女性角色声线，保持中性情绪"
+        if gender == "male":
+            return "自然、清晰、有辨识度的男性角色声线，保持中性情绪"
+        return "自然、清晰、有辨识度的角色声线，保持中性情绪"
 
     def _generate_director(self, project_id: str) -> None:
         source_path = self._find_source(project_id)
@@ -601,6 +772,20 @@ def create_preparation_router(service: PreparationService) -> APIRouter:
     def run(project_id: str, request: PreparationActionRequest) -> PreparationPreview:
         try:
             return service.run(project_id, request.action)
+        except PreparationProblem as problem:
+            raise handle(problem) from problem
+
+    @router.patch(
+        "/api/projects/{project_id}/references/{reference_id}",
+        response_model=PreparationPreview,
+    )
+    def update_reference_selection(
+        project_id: str,
+        reference_id: str,
+        request: ReferenceSelectionRequest,
+    ) -> PreparationPreview:
+        try:
+            return service.update_reference_selection(project_id, reference_id, request.selected)
         except PreparationProblem as problem:
             raise handle(problem) from problem
 

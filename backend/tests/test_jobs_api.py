@@ -95,6 +95,64 @@ def test_voxcpm_job_is_queued_generated_and_served(tmp_path: Path) -> None:
     assert audio.headers["content-type"].startswith("audio/wav")
 
 
+def test_voxcpm_reference_job_updates_the_project_reference_plan(tmp_path: Path) -> None:
+    gateway = FakeModelGateway()
+    app = create_app(tmp_path, model_gateway=gateway)
+    imported = asyncio.run(
+        request(
+            app,
+            "POST",
+            "/api/sources",
+            files={
+                "file": (
+                    "参考任务.txt",
+                    "第一章 初见\n萧炎说道：\"开始吧。\"".encode(),
+                    "text/plain",
+                )
+            },
+        )
+    ).json()
+    project_id = imported["project_id"]
+    asyncio.run(request(app, "POST", f"/api/projects/{project_id}/preparation", json={"action": "analyze"}))
+    extracted = asyncio.run(
+        request(
+            app,
+            "POST",
+            f"/api/projects/{project_id}/preparation",
+            json={"action": "extract_characters"},
+        )
+    ).json()
+    reference = next(item for item in extracted["reference_plan"]["items"] if item["display_name"] == "萧炎")
+
+    queued = asyncio.run(
+        request(
+            app,
+            "POST",
+            "/api/jobs",
+            json={
+                "kind": "voxcpm_reference",
+                "project_id": project_id,
+                "reference_id": reference["reference_id"],
+                "character_id": reference["source_character_id"],
+                "text": reference["reference_text"],
+                "voice_prompt": reference["voice_prompt"],
+            },
+        )
+    )
+
+    assert queued.status_code == 202
+    completed = wait_for_job(app, queued.json()["job_id"])
+    assert completed["status"] == "complete"
+    preview = asyncio.run(request(app, "GET", f"/api/projects/{project_id}/preparation/preview")).json()
+    updated = next(
+        item for item in preview["reference_plan"]["items"]
+        if item["reference_id"] == reference["reference_id"]
+    )
+    assert updated["status"] == "generated"
+    assert updated["job_id"] == completed["job_id"]
+    assert updated["audio_url"] == completed["output_url"]
+
+
 def test_quality_job_resolves_only_workspace_media_paths(tmp_path: Path) -> None:
     reference = tmp_path / "assets" / "voice_samples" / "curated" / "reference.wav"
     reference.parent.mkdir(parents=True)

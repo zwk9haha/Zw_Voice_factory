@@ -1,4 +1,4 @@
-import type { AudioJob, AudioJobRequest, PreparationAction, PreparationPreview, SourceSummary, WorkspacePayload } from "./types";
+import type { AudioJob, AudioJobRequest, PreparationAction, PreparationPreview, SourceSummary, SystemResources, WorkspacePayload } from "./types";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -43,6 +43,16 @@ export async function runPreparationAction(projectId: string, action: Preparatio
   );
 }
 
+export async function updateReferenceSelection(projectId: string, referenceId: string, selected: boolean): Promise<PreparationPreview> {
+  return responseJson<PreparationPreview>(
+    await fetch(`/api/projects/${encodeURIComponent(projectId)}/references/${encodeURIComponent(referenceId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selected }),
+    }),
+  );
+}
+
 export async function createAudioJob(request: AudioJobRequest): Promise<AudioJob> {
   return responseJson<AudioJob>(
     await fetch("/api/jobs", {
@@ -55,4 +65,8 @@ export async function createAudioJob(request: AudioJobRequest): Promise<AudioJob
 
 export async function fetchAudioJob(jobId: string): Promise<AudioJob> {
   return responseJson<AudioJob>(await fetch(`/api/jobs/${encodeURIComponent(jobId)}`));
+}
+
+export async function fetchSystemResources(): Promise<SystemResources> {
+  return responseJson<SystemResources>(await fetch("/api/system/resources"));
 }
