@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -42,8 +43,12 @@ def create_app(workspace_root: Path | None = None, model_gateway: ModelGateway |
     application.router.add_event_handler("shutdown", jobs.close)
 
     @application.get("/api/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok", "service": "zw-voice-factory"}
+    def health() -> dict[str, str | bool]:
+        return {
+            "status": "ok",
+            "service": "zw-voice-factory",
+            "launcher_managed": os.getenv("ZW_VOICE_LAUNCHER_MANAGED") == "1",
+        }
 
     @application.get("/api/workspace", response_model=WorkspacePayload)
     def workspace() -> WorkspacePayload:

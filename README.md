@@ -37,13 +37,20 @@ The first command prints the plan. The second copies this seed, moves approved r
 
 ## Start And Test
 
-Use the project launcher for normal development. It starts and preloads GPT-SoVITS and VoxCPM2, then starts FastAPI and Vite. All four processes are attached to one Windows Job Object, so closing the launcher window also closes every process it started.
+Double-click `Start-ZwVoice.cmd` to open the launcher menu. Starting from the menu preloads GPT-SoVITS and VoxCPM2, then starts FastAPI and Vite. All four processes are attached to one Windows Job Object, so closing the owning launcher window also closes every process it started.
 
 ```powershell
-.\Start-ZwVoice.cmd
+.\Start-ZwVoice.cmd run
 ```
 
-The WebUI opens at `http://127.0.0.1:5173/`. Audio-generation progress is printed in the launcher window and shown in the WebUI. Ports `9880`, `9881`, `8800`, and `5173` must be available; the launcher never kills an unrelated process occupying one of these ports.
+The WebUI opens at `http://127.0.0.1:5173/`. Audio-generation progress is printed in the launcher window and shown in the WebUI. Starting again while a healthy launcher-managed instance exists opens that WebUI instead of treating its ports as an error.
+
+```powershell
+.\Start-ZwVoice.cmd status
+.\Start-ZwVoice.cmd stop
+```
+
+The launcher records its verified owner PID under `outputs/runtime/launcher.json`. The stop command only targets that validated launcher process; it never kills an unrelated process merely because it occupies a known port.
 
 Run the complete verification through the same preload and process-lifetime path:
 

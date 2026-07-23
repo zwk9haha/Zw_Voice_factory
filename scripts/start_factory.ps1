@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('run', 'test')]
+    [ValidateSet('run', 'test', 'status', 'stop')]
     [string]$Mode = 'run'
 )
 
@@ -16,6 +16,200 @@ $voxcpmWeights = Join-Path $factoryRoot 'models\tts\voxcpm2'
 $voxcpmWorker = Join-Path $factoryRoot 'model_workers\voxcpm_server.py'
 $viteScript = Join-Path $factoryRoot 'frontend\node_modules\vite\bin\vite.js'
 $tscScript = Join-Path $factoryRoot 'frontend\node_modules\typescript\bin\tsc'
+$launcherStateRoot = Join-Path $factoryRoot 'outputs\runtime'
+$launcherStatePath = Join-Path $launcherStateRoot 'launcher.json'
+$webUrl = 'http://127.0.0.1:5173/'
+$runtimeUrl = 'http://127.0.0.1:8800/api/runtime'
+
+function Get-HealthyFactoryRuntime {
+    try {
+        $backend = Invoke-RestMethod -Uri 'http://127.0.0.1:8800/api/health' -TimeoutSec 2 -ErrorAction Stop
+        if ($backend.launcher_managed -ne $true) {
+            throw 'Backend is not launcher-managed.'
+        }
+        $voxcpm = Invoke-RestMethod -Uri 'http://127.0.0.1:9881/health' -TimeoutSec 2 -ErrorAction Stop
+        $gpt = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9880/openapi.json' -TimeoutSec 2 -ErrorAction Stop
+        $frontend = Invoke-WebRequest -UseBasicParsing -Uri $webUrl -TimeoutSec 3 -ErrorAction Stop
+        if (
+            $frontend.StatusCode -eq 200 -and
+            $voxcpm.status -eq 'ready' -and
+            $gpt.StatusCode -eq 200
+        ) {
+            return [pscustomobject]@{
+                launcher_managed = $true
+                services = [pscustomobject]@{
+                    voxcpm2 = [pscustomobject]@{ status = 'ready'; url = 'http://127.0.0.1:9881' }
+                    gpt_sovits = [pscustomobject]@{ status = 'ready'; url = 'http://127.0.0.1:9880' }
+                }
+            }
+        }
+    } catch {
+        # Compatibility path for a runtime started by the previous launcher version.
+        try {
+            $runtime = Invoke-RestMethod -Uri $runtimeUrl -TimeoutSec 8 -ErrorAction Stop
+            $frontend = Invoke-WebRequest -UseBasicParsing -Uri $webUrl -TimeoutSec 3 -ErrorAction Stop
+            if (
+                $frontend.StatusCode -eq 200 -and
+                $runtime.launcher_managed -eq $true -and
+                $runtime.services.voxcpm2.status -eq 'ready' -and
+                $runtime.services.gpt_sovits.status -eq 'ready'
+            ) {
+                return $runtime
+            }
+        } catch {
+            return $null
+        }
+    }
+    return $null
+}
+
+function Read-LauncherState {
+    if (-not (Test-Path -LiteralPath $launcherStatePath -PathType Leaf)) {
+        return $null
+    }
+    try {
+        return Get-Content -Raw -LiteralPath $launcherStatePath -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+function Write-RuntimeSummary($Runtime, $State) {
+    Write-Host 'Zw Voice Factory is running.' -ForegroundColor Green
+    Write-Host "WebUI      : $webUrl"
+    Write-Host "VoxCPM2    : $($Runtime.services.voxcpm2.status)"
+    Write-Host "GPT-SoVITS : $($Runtime.services.gpt_sovits.status)"
+    if ($null -ne $State) {
+        Write-Host "Launcher PID: $($State.launcher_pid)"
+    }
+}
+
+function Write-LauncherState([hashtable]$Processes) {
+    New-Item -ItemType Directory -Path $launcherStateRoot -Force | Out-Null
+    $payload = [ordered]@{
+        schema_version = 1
+        launcher_pid = $PID
+        started_at = [DateTime]::UtcNow.ToString('o')
+        web_url = $webUrl
+        services = $Processes
+    }
+    $temporaryPath = "$launcherStatePath.tmp"
+    $payload | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $temporaryPath -Encoding UTF8
+    Move-Item -LiteralPath $temporaryPath -Destination $launcherStatePath -Force
+}
+
+function Remove-LauncherStateIfOwned {
+    $state = Read-LauncherState
+    if ($null -ne $state -and [int]$state.launcher_pid -eq $PID) {
+        Remove-Item -LiteralPath $launcherStatePath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-RecordedLauncher {
+    $state = Read-LauncherState
+    if ($null -eq $state) {
+        return $null
+    }
+    $launcherPid = [int]$state.launcher_pid
+    $launcherProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $launcherPid" -ErrorAction SilentlyContinue
+    $expectedScript = Join-Path $factoryRoot 'scripts\start_factory.ps1'
+    if (
+        $null -eq $launcherProcess -or
+        $launcherProcess.Name -ne 'powershell.exe' -or
+        $launcherProcess.CommandLine -notlike "*$expectedScript*"
+    ) {
+        return $null
+    }
+    return [pscustomobject]@{ state = $state; process = $launcherProcess }
+}
+
+function Stop-RecordedLauncher {
+    $state = Read-LauncherState
+    $runtime = Get-HealthyFactoryRuntime
+    if ($null -eq $state) {
+        if ($null -ne $runtime) {
+            throw 'A healthy runtime exists without a launcher state file. Close its original launcher window before using stop.'
+        }
+        Write-Host 'Zw Voice Factory is not running.' -ForegroundColor DarkGray
+        return
+    }
+
+    $recordedLauncher = Get-RecordedLauncher
+    if ($null -eq $recordedLauncher) {
+        $launcherPid = [int]$state.launcher_pid
+        if ($null -ne $runtime) {
+            throw "Launcher state PID $launcherPid does not identify this project's process. No process was stopped."
+        }
+        Remove-Item -LiteralPath $launcherStatePath -Force -ErrorAction SilentlyContinue
+        Write-Host 'Removed a stale launcher state. Zw Voice Factory is not running.' -ForegroundColor DarkGray
+        return
+    }
+
+    $launcherPid = [int]$recordedLauncher.state.launcher_pid
+    Write-Host "Stopping launcher PID $launcherPid and its managed services..." -ForegroundColor Yellow
+    Stop-Process -Id $launcherPid -Force -ErrorAction Stop
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    do {
+        Start-Sleep -Milliseconds 300
+        $listeners = Get-NetTCPConnection -State Listen -LocalPort 5173, 8800, 9880, 9881 -ErrorAction SilentlyContinue
+    } while ($listeners -and [DateTime]::UtcNow -lt $deadline)
+    if ($listeners) {
+        throw 'The launcher stopped, but one or more managed ports did not close within 20 seconds.'
+    }
+    Remove-Item -LiteralPath $launcherStatePath -Force -ErrorAction SilentlyContinue
+    Write-Host 'Zw Voice Factory stopped.' -ForegroundColor Green
+}
+
+if ($Mode -eq 'status') {
+    $existingRuntime = Get-HealthyFactoryRuntime
+    if ($null -eq $existingRuntime) {
+        $recordedLauncher = Get-RecordedLauncher
+        if ($null -ne $recordedLauncher) {
+            Write-Host "Zw Voice Factory is starting. Launcher PID: $($recordedLauncher.state.launcher_pid)" -ForegroundColor Yellow
+            exit 0
+        }
+        Write-Host 'Zw Voice Factory is not running.' -ForegroundColor Yellow
+        exit 1
+    }
+    Write-RuntimeSummary $existingRuntime (Read-LauncherState)
+    exit 0
+}
+
+if ($Mode -eq 'stop') {
+    try {
+        Stop-RecordedLauncher
+        exit 0
+    } catch {
+        Write-Host "[FAILED] $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+}
+
+$existingRuntime = Get-HealthyFactoryRuntime
+if ($null -ne $existingRuntime) {
+    if ($Mode -eq 'test') {
+        Write-Host '[FAILED] Zw Voice Factory is already running. Stop it before test mode so tests use a fresh lifecycle.' -ForegroundColor Red
+        exit 1
+    }
+    Write-RuntimeSummary $existingRuntime (Read-LauncherState)
+    Write-Host 'Opening the existing WebUI instead of starting a second instance.' -ForegroundColor Cyan
+    if ($env:ZW_VOICE_NONINTERACTIVE -ne '1') {
+        Start-Process $webUrl
+    }
+    exit 0
+}
+
+$recordedLauncher = Get-RecordedLauncher
+if ($null -ne $recordedLauncher) {
+    if ($Mode -eq 'test') {
+        Write-Host '[FAILED] Zw Voice Factory is already starting. Stop it before test mode.' -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Zw Voice Factory is already starting. Launcher PID: $($recordedLauncher.state.launcher_pid)" -ForegroundColor Yellow
+    Write-Host 'Wait for the owning launcher window to report that the WebUI is ready.' -ForegroundColor DarkGray
+    exit 0
+}
+
 $nodePath = (Get-Command node.exe -ErrorAction Stop).Source
 
 Add-Type -TypeDefinition @'
@@ -314,6 +508,7 @@ try {
     foreach ($port in @(9880, 9881, 8800, 5173)) { Assert-PortAvailable $port }
 
     $jobHandle = [ZwVoiceLauncher.NativeJob]::CreateKillOnCloseJob()
+    Write-LauncherState @{}
     $env:PYTHONUNBUFFERED = '1'
     $env:PYTHONIOENCODING = 'utf-8'
     $env:ZW_VOICE_LAUNCHER_MANAGED = '1'
@@ -348,7 +543,23 @@ try {
     ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
     Wait-ServiceReady -Name 'WebUI' -Uri 'http://127.0.0.1:5173/' -Process $frontendProcess -TimeoutSeconds 90
 
+    Write-LauncherState @{
+        gpt_sovits = $gptProcess.Id
+        voxcpm2 = $voxcpmProcess.Id
+        backend = $backendProcess.Id
+        frontend = $frontendProcess.Id
+    }
+
     if ($Mode -eq 'test') {
+        $previousNonInteractive = $env:ZW_VOICE_NONINTERACTIVE
+        $env:ZW_VOICE_NONINTERACTIVE = '1'
+        try {
+            Invoke-ManagedTest -Name 'Launcher single-instance contract' -Executable $env:ComSpec -Arguments @(
+                '/d', '/c', (Join-Path $factoryRoot 'Start-ZwVoice.cmd'), 'run'
+            ) -WorkingDirectory $factoryRoot
+        } finally {
+            $env:ZW_VOICE_NONINTERACTIVE = $previousNonInteractive
+        }
         Invoke-ManagedTest -Name 'Backend pytest' -Executable $backendPython -Arguments @(
             '-m', 'pytest', '-q'
         ) -WorkingDirectory (Join-Path $factoryRoot 'backend')
@@ -377,6 +588,7 @@ try {
     $exitCode = 1
     Write-Host "[FAILED] $($_.Exception.Message)" -ForegroundColor Red
 } finally {
+    Remove-LauncherStateIfOwned
     if ($jobHandle -ne [IntPtr]::Zero) {
         Write-Host 'Stopping Zw Voice Factory child processes...' -ForegroundColor DarkGray
         [void][ZwVoiceLauncher.NativeJob]::CloseHandle($jobHandle)
