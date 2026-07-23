@@ -4,6 +4,10 @@ Zw Voice Factory converts long-form fiction into a reviewed voice cast and an ex
 
 ## Language
 
+**Analysis Audit**:
+The reviewable record of source-text structure, character candidates, supporting evidence, rejected false positives, and parser warnings produced before accepted identities enter the Character Voice Bible.
+_Avoid_: Analysis result, character list, director file
+
 **Character Voice Bible**:
 The authoritative, book- or series-level record of accepted characters, aliases, evidence, importance, voice profile, canonical reference, emotion variants, and rendering policy.
 _Avoid_: Impression file, character list, director file

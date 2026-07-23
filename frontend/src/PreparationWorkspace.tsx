@@ -1,6 +1,7 @@
 import { ArrowRight, Check, CircleAlert, FileText, Gauge, Mic2, Play, RefreshCw, SlidersHorizontal, Sparkles, Upload, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { InferenceTemplate, ProductionStageId, WorkspacePayload } from "./types";
+import { ProjectPreparationWorkspace } from "./ProjectPreparationWorkspace";
 import { Waveform } from "./Waveform";
 
 type PreparationStageId = Exclude<ProductionStageId, "quality_render">;
@@ -248,6 +249,9 @@ export function PreparationWorkspace(props: PreparationWorkspaceProps) {
   const activeStage = props.activeStage;
   if (activeStage === "template") {
     return <TemplateWorkspace {...props} />;
+  }
+  if (activeStage === "source" || activeStage === "casting" || activeStage === "director") {
+    return <ProjectPreparationWorkspace activeStage={activeStage} onStageChange={props.onStageChange} />;
   }
   return <GenericPreparationWorkspace {...props} activeStage={activeStage} />;
 }

@@ -6,28 +6,41 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from .preparation import PreparationService, create_preparation_router
 from .workspace import WorkspacePayload, build_demo_workspace
 
 
-app = FastAPI(title="Zw Voice Factory API", version="0.1.0")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-VOICE_SAMPLES_ROOT = Path(__file__).resolve().parents[2] / "assets" / "voice_samples"
-if VOICE_SAMPLES_ROOT.is_dir():
-    app.mount("/media/voice-samples", StaticFiles(directory=VOICE_SAMPLES_ROOT), name="voice-samples")
+DEFAULT_WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 
 
-@app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": "zw-voice-factory"}
+def create_app(workspace_root: Path | None = None) -> FastAPI:
+    root = (workspace_root or DEFAULT_WORKSPACE_ROOT).resolve()
+    application = FastAPI(title="Zw Voice Factory API", version="0.2.0")
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    voice_samples_root = root / "assets" / "voice_samples"
+    if voice_samples_root.is_dir():
+        application.mount(
+            "/media/voice-samples",
+            StaticFiles(directory=voice_samples_root),
+            name="voice-samples",
+        )
+    application.include_router(create_preparation_router(PreparationService(root)))
+
+    @application.get("/api/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "service": "zw-voice-factory"}
+
+    @application.get("/api/workspace", response_model=WorkspacePayload)
+    def workspace() -> WorkspacePayload:
+        return build_demo_workspace()
+
+    return application
 
 
-@app.get("/api/workspace", response_model=WorkspacePayload)
-def workspace() -> WorkspacePayload:
-    return build_demo_workspace()
+app = create_app()

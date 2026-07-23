@@ -7,6 +7,16 @@ interface QualityWorkbenchProps {
   workspace: WorkspacePayload;
 }
 
+function playbackFailureMessage(error: unknown): string {
+  if (error instanceof DOMException) {
+    if (error.name === "NotAllowedError") return "浏览器未授予播放权限，请使用播放器控件启动";
+    if (error.name === "NotSupportedError") return "浏览器不支持当前音频格式";
+    if (error.name === "AbortError") return "播放被新的音频操作中断";
+    return `播放失败 · ${error.name}`;
+  }
+  return "播放失败，请检查音频服务";
+}
+
 export function QualityWorkbench({ workspace }: QualityWorkbenchProps) {
   const [activeCharacter, setActiveCharacter] = useState("xiao_yan");
   const [playing, setPlaying] = useState<string | null>(null);
@@ -35,12 +45,11 @@ export function QualityWorkbench({ workspace }: QualityWorkbenchProps) {
     audio.pause();
     audio.src = audioUrl;
     audio.currentTime = 0;
-    audio.load();
     setPlaying(audioId);
     setAudioFeedback("加载中 · 参考试听素材");
-    audio.play().then(() => setAudioFeedback("播放中 · 参考试听素材")).catch(() => {
+    audio.play().then(() => setAudioFeedback("播放中 · 参考试听素材")).catch((error: unknown) => {
       setPlaying(null);
-      setAudioFeedback("浏览器阻止了播放，请再次点击");
+      setAudioFeedback(playbackFailureMessage(error));
     });
   }
 
