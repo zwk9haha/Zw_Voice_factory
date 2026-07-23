@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .domain import (
     CharacterEvidence,
@@ -27,7 +27,8 @@ PreparationAction = Literal["analyze", "extract_characters", "generate_director"
 ReferenceSelectionMode = Literal["automatic", "optional", "narrator_default"]
 ReferenceGenerationStatus = Literal["not_generated", "queued", "running", "generated", "failed"]
 
-REFERENCE_GENERATION_THRESHOLD = 0.75
+REFERENCE_PLAN_SCHEMA_VERSION = 2
+REFERENCE_GENERATION_THRESHOLD = 0.10
 REFERENCE_TEXT = "雨后的长街渐渐安静下来，我望着远处的灯火，平稳地说出今天的决定。"
 FEMALE_CLUES = ("她", "女子", "少女", "小姐", "母亲", "姐姐", "妹妹", "妻子", "薰", "熏", "嫣", "妃", "仙")
 MALE_CLUES = ("他", "男子", "少年", "先生", "父亲", "哥哥", "老者", "老")
@@ -178,7 +179,7 @@ class ReferencePlanItem(BaseModel):
 
 
 class ReferencePlan(BaseModel):
-    schema_version: int = 1
+    schema_version: int = REFERENCE_PLAN_SCHEMA_VERSION
     project_id: str
     generation_backend: Literal["voxcpm2"] = "voxcpm2"
     automatic_threshold: float = REFERENCE_GENERATION_THRESHOLD
@@ -199,8 +200,19 @@ class PreparationActionRequest(BaseModel):
     action: PreparationAction
 
 
-class ReferenceSelectionRequest(BaseModel):
-    selected: bool
+class ReferenceUpdateRequest(BaseModel):
+    selected: bool | None = None
+    voice_prompt: str | None = Field(default=None, min_length=1, max_length=1_000)
+
+    @model_validator(mode="after")
+    def require_change(self) -> "ReferenceUpdateRequest":
+        if self.selected is None and self.voice_prompt is None:
+            raise ValueError("至少需要提交一个参考项修改")
+        return self
+
+
+class ReferenceSettingsRequest(BaseModel):
+    automatic_threshold: float = Field(ge=0.01, le=1)
 
 
 class PreparationService:
@@ -252,6 +264,11 @@ class PreparationService:
                 if reference_plan is None:
                     reference_plan = self._build_reference_plan(project_id, bible)
                     self._write_model(project_id, "reference_plan.json", reference_plan)
+        elif reference_plan is not None and reference_plan.schema_version < REFERENCE_PLAN_SCHEMA_VERSION:
+            with self._reference_lock:
+                reference_plan.schema_version = REFERENCE_PLAN_SCHEMA_VERSION
+                self._apply_reference_threshold(reference_plan, REFERENCE_GENERATION_THRESHOLD)
+                self._write_model(project_id, "reference_plan.json", reference_plan)
         director = self._read_model(project_id, "director_doc.json", DirectorDocument)
         return PreparationPreview(
             project_id=project_id,
@@ -373,11 +390,12 @@ class PreparationService:
         self._write_model(project_id, "reference_plan.json", self._build_reference_plan(project_id, bible))
         self._remove_artifact(project_id, "director_doc.json")
 
-    def update_reference_selection(
+    def update_reference(
         self,
         project_id: str,
         reference_id: str,
-        selected: bool,
+        selected: bool | None,
+        voice_prompt: str | None,
     ) -> PreparationPreview:
         with self._reference_lock:
             plan = self._require_model(
@@ -389,11 +407,61 @@ class PreparationService:
             item = next((candidate for candidate in plan.items if candidate.reference_id == reference_id), None)
             if item is None:
                 raise PreparationProblem(404, "参考计划项不存在")
-            if item.locked and item.selected != selected:
-                raise PreparationProblem(409, "自动生成项不能取消选择")
-            item.selected = selected
+            if selected is not None:
+                if item.locked and item.selected != selected:
+                    raise PreparationProblem(409, "自动生成项不能取消选择")
+                item.selected = selected
+            if voice_prompt is not None:
+                prompt = voice_prompt.strip()
+                if not prompt:
+                    raise PreparationProblem(422, "声线描述不能为空")
+                item.voice_prompt = prompt
+                if item.selection_mode != "narrator_default":
+                    bible = self._require_model(
+                        project_id,
+                        "character_voice_bible.json",
+                        CharacterVoiceBible,
+                        "角色圣经不存在",
+                    )
+                    character = next(
+                        (candidate for candidate in bible.characters if candidate.character_id == item.source_character_id),
+                        None,
+                    )
+                    if character is not None:
+                        character.voice_prompt = prompt
+                        self._write_model(project_id, "character_voice_bible.json", bible)
             self._write_model(project_id, "reference_plan.json", plan)
         return self.preview(project_id)
+
+    def update_reference_threshold(
+        self,
+        project_id: str,
+        automatic_threshold: float,
+    ) -> PreparationPreview:
+        with self._reference_lock:
+            plan = self._require_model(
+                project_id,
+                "reference_plan.json",
+                ReferencePlan,
+                "请先提取并审核角色",
+            )
+            self._apply_reference_threshold(plan, automatic_threshold)
+            self._write_model(project_id, "reference_plan.json", plan)
+        return self.preview(project_id)
+
+    @staticmethod
+    def _apply_reference_threshold(plan: ReferencePlan, automatic_threshold: float) -> None:
+        plan.automatic_threshold = automatic_threshold
+        for item in plan.items:
+            if item.selection_mode == "narrator_default":
+                item.selected = True
+                item.locked = True
+                continue
+            manually_selected = item.selection_mode == "optional" and item.selected
+            automatic = item.importance >= automatic_threshold
+            item.selection_mode = "automatic" if automatic else "optional"
+            item.selected = automatic or manually_selected
+            item.locked = automatic
 
     def record_reference_job(
         self,
@@ -775,17 +843,32 @@ def create_preparation_router(service: PreparationService) -> APIRouter:
         except PreparationProblem as problem:
             raise handle(problem) from problem
 
+    @router.patch("/api/projects/{project_id}/reference-settings", response_model=PreparationPreview)
+    def update_reference_settings(
+        project_id: str,
+        request: ReferenceSettingsRequest,
+    ) -> PreparationPreview:
+        try:
+            return service.update_reference_threshold(project_id, request.automatic_threshold)
+        except PreparationProblem as problem:
+            raise handle(problem) from problem
+
     @router.patch(
         "/api/projects/{project_id}/references/{reference_id}",
         response_model=PreparationPreview,
     )
-    def update_reference_selection(
+    def update_reference(
         project_id: str,
         reference_id: str,
-        request: ReferenceSelectionRequest,
+        request: ReferenceUpdateRequest,
     ) -> PreparationPreview:
         try:
-            return service.update_reference_selection(project_id, reference_id, request.selected)
+            return service.update_reference(
+                project_id,
+                reference_id,
+                request.selected,
+                request.voice_prompt,
+            )
         except PreparationProblem as problem:
             raise handle(problem) from problem
 

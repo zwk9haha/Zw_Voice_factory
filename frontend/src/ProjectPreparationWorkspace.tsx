@@ -1,6 +1,6 @@
-import { ArrowRight, Check, CircleAlert, FileText, LoaderCircle, Lock, Mic2, Play, Plus, RefreshCw, RotateCcw, SlidersHorizontal, Upload, Users } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, FileText, LoaderCircle, Lock, Mic2, Play, Plus, RefreshCw, RotateCcw, Save, SlidersHorizontal, Upload, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { createAudioJob, fetchAudioJob, fetchPreparationPreview, fetchSources, importTxtSource, runPreparationAction, updateReferenceSelection } from "./api";
+import { createAudioJob, fetchAudioJob, fetchPreparationPreview, fetchSources, importTxtSource, runPreparationAction, updateReferenceSelection, updateReferenceThreshold, updateReferenceVoicePrompt } from "./api";
 import type {
   AudioJob,
   PreparationAction,
@@ -102,6 +102,8 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [referenceJobs, setReferenceJobs] = useState<Record<string, AudioJob>>({});
+  const [thresholdPercent, setThresholdPercent] = useState(10);
+  const [voicePromptDraft, setVoicePromptDraft] = useState("");
   const [feedback, setFeedback] = useState("选择 TXT 后开始准备流程");
   const [showPreview, setShowPreview] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -148,6 +150,16 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
     setSelectedIndex(0);
     setShowPreview(false);
   }, [activeStage, selectedProjectId]);
+
+  useEffect(() => {
+    if (preview?.reference_plan) {
+      setThresholdPercent(Math.round(preview.reference_plan.automatic_threshold * 100));
+    }
+  }, [preview?.reference_plan?.automatic_threshold]);
+
+  useEffect(() => {
+    setVoicePromptDraft(selectedReference?.voice_prompt ?? "");
+  }, [selectedReference?.reference_id, selectedReference?.voice_prompt]);
 
   async function refresh(): Promise<void> {
     setBusy("refresh");
@@ -227,6 +239,42 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
     try {
       setPreview(await updateReferenceSelection(selectedProjectId, item.reference_id, !item.selected));
       setFeedback(item.selected ? `${item.display_name} 将复用${item.gender === "female" ? "女" : "男"}旁白` : `${item.display_name} 已加入参考生成`);
+    } catch (error) {
+      setFeedback(errorMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveReferenceThreshold(): Promise<void> {
+    if (!selectedProjectId || !preview?.reference_plan) return;
+    const nextThreshold = thresholdPercent / 100;
+    if (Math.abs(nextThreshold - preview.reference_plan.automatic_threshold) < 0.0001) return;
+    setBusy("reference_threshold");
+    try {
+      const next = await updateReferenceThreshold(selectedProjectId, nextThreshold);
+      setPreview(next);
+      const automaticCount = next.reference_plan?.items.filter((item) => item.selection_mode !== "optional").length ?? 0;
+      setFeedback(`自动生成阈值已设为 ${thresholdPercent}%，当前自动选择 ${automaticCount} 项`);
+    } catch (error) {
+      setFeedback(errorMessage(error));
+      setThresholdPercent(Math.round(preview.reference_plan.automatic_threshold * 100));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveVoicePrompt(): Promise<void> {
+    if (!selectedProjectId || !selectedReference) return;
+    const prompt = voicePromptDraft.trim();
+    if (!prompt) {
+      setFeedback("声线描述不能为空");
+      return;
+    }
+    setBusy(`voice_prompt:${selectedReference.reference_id}`);
+    try {
+      setPreview(await updateReferenceVoicePrompt(selectedProjectId, selectedReference.reference_id, prompt));
+      setFeedback(`${selectedReference.display_name} 的声线描述已保存`);
     } catch (error) {
       setFeedback(errorMessage(error));
     } finally {
@@ -328,7 +376,6 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
     { label: "生成后端", value: "VoxCPM2" },
     { label: "当前状态", value: currentReferenceJob?.message ?? referenceStatusLabel[selectedReference.status] },
     { label: "任务进度", value: currentReferenceJob ? `${currentReferenceJob.progress}%` : selectedReference.status === "generated" ? "100%" : "尚未提交" },
-    { label: "声线描述", value: selectedReference.voice_prompt },
     { label: "参考用途", value: selectedReference.selection_mode === "narrator_default" ? "默认旁白与低权重角色复用" : "角色中性身份锚点" },
   ] : [];
 
@@ -401,6 +448,13 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
             <button className="secondary-button" disabled={isBusy || !selectedSource} onClick={() => void openPreview()}><Play size={14} />预览</button>
           </div>
         )}
+        {activeStage === "casting" && preview?.reference_plan && (
+          <div className="casting-threshold-control">
+            <div><span>自动生成权重阈值</span><strong>{thresholdPercent}% 及以上</strong></div>
+            <input type="range" min="1" max="100" step="1" value={thresholdPercent} aria-label="自动生成权重阈值" disabled={isBusy} onChange={(event) => setThresholdPercent(Number(event.target.value))} onPointerUp={() => void saveReferenceThreshold()} onKeyUp={() => void saveReferenceThreshold()} />
+            <button className="icon-button" title="应用权重阈值" disabled={isBusy || Math.abs(thresholdPercent / 100 - preview.reference_plan.automatic_threshold) < 0.0001} onClick={() => void saveReferenceThreshold()}><Save size={14} /></button>
+          </div>
+        )}
         <div className="operation-feedback" role="status">{isBusy && <LoaderCircle className="spin" size={14} />}{feedback}</div>
         {showPreview && preview ? <PreviewPanel preview={preview} /> : (
           <>
@@ -412,6 +466,11 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
             {activeStage === "references" && selectedReference && (
               <section className="reference-preview">
                 <div className="reference-copy"><span>标准参考文本</span><p>{selectedReference.reference_text}</p></div>
+                <div className="reference-voice-editor">
+                  <label htmlFor="reference-voice-prompt">声线描述</label>
+                  <textarea id="reference-voice-prompt" maxLength={1000} value={voicePromptDraft} disabled={isBusy} onChange={(event) => setVoicePromptDraft(event.target.value)} />
+                  <div><small>{voicePromptDraft.length} / 1000</small><button className="secondary-button" disabled={isBusy || !voicePromptDraft.trim() || voicePromptDraft.trim() === selectedReference.voice_prompt} onClick={() => void saveVoicePrompt()}><Save size={14} />保存声线描述</button></div>
+                </div>
                 {currentReferenceJob && currentReferenceJob.status !== "complete" && (
                   <div className={`job-progress ${currentReferenceJob.status === "failed" ? "job-progress--failed" : ""}`}><span style={{ width: `${currentReferenceJob.progress}%` }} /><small>{currentReferenceJob.message}</small></div>
                 )}

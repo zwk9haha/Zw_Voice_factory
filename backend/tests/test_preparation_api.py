@@ -109,6 +109,7 @@ def test_character_extraction_builds_reference_plan_from_importance(tmp_path: Pa
     response = run_action(tmp_path, project_id, "extract_characters")
 
     assert response.status_code == 200
+    assert response.json()["reference_plan"]["automatic_threshold"] == 0.1
     items = response.json()["reference_plan"]["items"]
     by_name = {item["display_name"]: item for item in items}
     assert by_name["男旁白"]["selection_mode"] == "narrator_default"
@@ -117,9 +118,25 @@ def test_character_extraction_builds_reference_plan_from_importance(tmp_path: Pa
     assert by_name["女旁白"]["locked"] is True
     assert by_name["萧炎"]["selection_mode"] == "automatic"
     assert by_name["萧炎"]["selected"] is True
-    assert by_name["药老"]["selection_mode"] == "optional"
-    assert by_name["药老"]["selected"] is False
+    assert by_name["药老"]["selection_mode"] == "automatic"
     assert by_name["药老"]["reuse_reference_id"] == by_name["男旁白"]["reference_id"]
+
+    adjusted = asyncio.run(
+        request(
+            tmp_path,
+            "PATCH",
+            f"/api/projects/{project_id}/reference-settings",
+            json={"automatic_threshold": 0.75},
+        )
+    )
+    assert adjusted.status_code == 200
+    adjusted_by_name = {
+        item["display_name"]: item
+        for item in adjusted.json()["reference_plan"]["items"]
+    }
+    assert adjusted_by_name["萧炎"]["selection_mode"] == "automatic"
+    assert adjusted_by_name["药老"]["selection_mode"] == "optional"
+    assert adjusted_by_name["药老"]["selected"] is False
 
 
 def test_only_optional_reference_items_can_be_toggled(tmp_path: Path) -> None:
@@ -134,6 +151,14 @@ def test_only_optional_reference_items_can_be_toggled(tmp_path: Path) -> None:
     project_id = str(imported["project_id"])
     run_action(tmp_path, project_id, "analyze")
     extracted = run_action(tmp_path, project_id, "extract_characters").json()
+    extracted = asyncio.run(
+        request(
+            tmp_path,
+            "PATCH",
+            f"/api/projects/{project_id}/reference-settings",
+            json={"automatic_threshold": 0.75},
+        )
+    ).json()
     by_name = {item["display_name"]: item for item in extracted["reference_plan"]["items"]}
 
     optional = by_name["纳兰嫣然"]
@@ -164,6 +189,39 @@ def test_only_optional_reference_items_can_be_toggled(tmp_path: Path) -> None:
         )
     )
     assert locked.status_code == 409
+
+
+def test_reference_voice_prompt_updates_the_reference_and_character_bible(tmp_path: Path) -> None:
+    imported = import_source(tmp_path, "第一章 初见\n萧炎说道：\"开始吧。\"".encode())
+    project_id = str(imported["project_id"])
+    run_action(tmp_path, project_id, "analyze")
+    extracted = run_action(tmp_path, project_id, "extract_characters").json()
+    reference = next(
+        item for item in extracted["reference_plan"]["items"]
+        if item["display_name"] == "萧炎"
+    )
+
+    response = asyncio.run(
+        request(
+            tmp_path,
+            "PATCH",
+            f"/api/projects/{project_id}/references/{reference['reference_id']}",
+            json={"voice_prompt": "青年男声，清亮克制，吐字自然，保持中性情绪"},
+        )
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    updated_reference = next(
+        item for item in payload["reference_plan"]["items"]
+        if item["reference_id"] == reference["reference_id"]
+    )
+    updated_character = next(
+        item for item in payload["character_voice_bible"]["characters"]
+        if item["character_id"] == reference["source_character_id"]
+    )
+    assert updated_reference["voice_prompt"] == "青年男声，清亮克制，吐字自然，保持中性情绪"
+    assert updated_character["voice_prompt"] == updated_reference["voice_prompt"]
 
 
 def test_character_extraction_does_not_turn_speech_modifiers_into_names(tmp_path: Path) -> None:
