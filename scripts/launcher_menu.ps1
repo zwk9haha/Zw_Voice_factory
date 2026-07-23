@@ -1,5 +1,7 @@
 ﻿param(
-    [string]$Selection = ''
+    [string]$Selection = '',
+    [switch]$PauseAfterFailure,
+    [switch]$NonInteractive
 )
 
 Set-StrictMode -Version Latest
@@ -9,6 +11,16 @@ $Host.UI.RawUI.WindowTitle = 'Zw Voice Factory 中文启动器'
 
 $factoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $launcherPath = Join-Path $factoryRoot 'Start-ZwVoice.cmd'
+
+if ($PauseAfterFailure) {
+    $prompt = '启动失败。按回车键关闭此窗口'
+    if ($NonInteractive) {
+        Write-Host $prompt
+    } else {
+        [void](Read-Host $prompt)
+    }
+    exit 0
+}
 
 while ($true) {
     Clear-Host

@@ -28,5 +28,5 @@ exit /b 0
 :own
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start_factory.ps1" run
 set "launcher_code=%ERRORLEVEL%"
-if not "%launcher_code%"=="0" pause
+if not "%launcher_code%"=="0" powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\launcher_menu.ps1" -PauseAfterFailure
 exit /b %launcher_code%
