@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet('run', 'test', 'status', 'stop', 'focus')]
     [string]$Mode = 'run'
 )
@@ -25,7 +25,7 @@ function Get-HealthyFactoryRuntime {
     try {
         $backend = Invoke-RestMethod -Uri 'http://127.0.0.1:8800/api/health' -TimeoutSec 2 -ErrorAction Stop
         if ($backend.launcher_managed -ne $true) {
-            throw 'Backend is not launcher-managed.'
+            throw '后端不是由当前启动器管理。'
         }
         $voxcpm = Invoke-RestMethod -Uri 'http://127.0.0.1:9881/health' -TimeoutSec 2 -ErrorAction Stop
         $gpt = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9880/openapi.json' -TimeoutSec 2 -ErrorAction Stop
@@ -75,12 +75,14 @@ function Read-LauncherState {
 }
 
 function Write-RuntimeSummary($Runtime, $State) {
-    Write-Host 'Zw Voice Factory is running.' -ForegroundColor Green
+    $voxcpmStatus = if ($Runtime.services.voxcpm2.status -eq 'ready') { '就绪' } else { $Runtime.services.voxcpm2.status }
+    $gptStatus = if ($Runtime.services.gpt_sovits.status -eq 'ready') { '就绪' } else { $Runtime.services.gpt_sovits.status }
+    Write-Host 'Zw Voice Factory 正在运行。' -ForegroundColor Green
     Write-Host "WebUI      : $webUrl"
-    Write-Host "VoxCPM2    : $($Runtime.services.voxcpm2.status)"
-    Write-Host "GPT-SoVITS : $($Runtime.services.gpt_sovits.status)"
+    Write-Host "VoxCPM2    : $voxcpmStatus"
+    Write-Host "GPT-SoVITS : $gptStatus"
     if ($null -ne $State) {
-        Write-Host "Launcher PID: $($State.launcher_pid)"
+        Write-Host "启动器 PID : $($State.launcher_pid)"
     }
 }
 
@@ -142,7 +144,7 @@ public static class ZwVoiceWindow {
 '@
     [void][ZwVoiceWindow]::ShowWindowAsync($consoleProcess.MainWindowHandle, 9)
     [void][ZwVoiceWindow]::SetForegroundWindow($consoleProcess.MainWindowHandle)
-    Write-Host "Activated the owner launcher window (PID $($recordedLauncher.state.launcher_pid))." -ForegroundColor Green
+    Write-Host "已激活现有启动器窗口（PID $($recordedLauncher.state.launcher_pid)）。" -ForegroundColor Green
     if ($null -ne (Get-HealthyFactoryRuntime)) {
         Start-Process $webUrl
     }
@@ -154,9 +156,9 @@ function Stop-RecordedLauncher {
     $runtime = Get-HealthyFactoryRuntime
     if ($null -eq $state) {
         if ($null -ne $runtime) {
-            throw 'A healthy runtime exists without a launcher state file. Close its original launcher window before using stop.'
+            throw '检测到运行中的服务，但缺少启动器状态文件。请关闭最初的启动器窗口。'
         }
-        Write-Host 'Zw Voice Factory is not running.' -ForegroundColor DarkGray
+        Write-Host 'Zw Voice Factory 当前未运行。' -ForegroundColor DarkGray
         return
     }
 
@@ -164,15 +166,15 @@ function Stop-RecordedLauncher {
     if ($null -eq $recordedLauncher) {
         $launcherPid = [int]$state.launcher_pid
         if ($null -ne $runtime) {
-            throw "Launcher state PID $launcherPid does not identify this project's process. No process was stopped."
+            throw "状态文件中的 PID $launcherPid 不属于本项目启动器，未停止任何进程。"
         }
         Remove-Item -LiteralPath $launcherStatePath -Force -ErrorAction SilentlyContinue
-        Write-Host 'Removed a stale launcher state. Zw Voice Factory is not running.' -ForegroundColor DarkGray
+        Write-Host '已清理过期的启动器状态，Zw Voice Factory 当前未运行。' -ForegroundColor DarkGray
         return
     }
 
     $launcherPid = [int]$recordedLauncher.state.launcher_pid
-    Write-Host "Stopping launcher PID $launcherPid and its managed services..." -ForegroundColor Yellow
+    Write-Host "正在关闭启动器 PID $launcherPid 及其托管服务..." -ForegroundColor Yellow
     Stop-Process -Id $launcherPid -Force -ErrorAction Stop
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     do {
@@ -180,10 +182,10 @@ function Stop-RecordedLauncher {
         $listeners = Get-NetTCPConnection -State Listen -LocalPort 5173, 8800, 9880, 9881 -ErrorAction SilentlyContinue
     } while ($listeners -and [DateTime]::UtcNow -lt $deadline)
     if ($listeners) {
-        throw 'The launcher stopped, but one or more managed ports did not close within 20 seconds.'
+        throw '启动器已停止，但一个或多个托管端口在 20 秒内未关闭。'
     }
     Remove-Item -LiteralPath $launcherStatePath -Force -ErrorAction SilentlyContinue
-    Write-Host 'Zw Voice Factory stopped.' -ForegroundColor Green
+    Write-Host 'Zw Voice Factory 已完全关闭。' -ForegroundColor Green
 }
 
 if ($Mode -eq 'status') {
@@ -191,10 +193,10 @@ if ($Mode -eq 'status') {
     if ($null -eq $existingRuntime) {
         $recordedLauncher = Get-RecordedLauncher
         if ($null -ne $recordedLauncher) {
-            Write-Host "Zw Voice Factory is starting. Launcher PID: $($recordedLauncher.state.launcher_pid)" -ForegroundColor Yellow
+            Write-Host "Zw Voice Factory 正在启动，启动器 PID：$($recordedLauncher.state.launcher_pid)" -ForegroundColor Yellow
             exit 0
         }
-        Write-Host 'Zw Voice Factory is not running.' -ForegroundColor Yellow
+        Write-Host 'Zw Voice Factory 当前未运行。' -ForegroundColor Yellow
         exit 1
     }
     Write-RuntimeSummary $existingRuntime (Read-LauncherState)
@@ -206,7 +208,7 @@ if ($Mode -eq 'stop') {
         Stop-RecordedLauncher
         exit 0
     } catch {
-        Write-Host "[FAILED] $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "[失败] $($_.Exception.Message)" -ForegroundColor Red
         exit 1
     }
 }
@@ -221,11 +223,11 @@ if ($Mode -eq 'focus') {
 $existingRuntime = Get-HealthyFactoryRuntime
 if ($null -ne $existingRuntime) {
     if ($Mode -eq 'test') {
-        Write-Host '[FAILED] Zw Voice Factory is already running. Stop it before test mode so tests use a fresh lifecycle.' -ForegroundColor Red
+        Write-Host '[失败] Zw Voice Factory 已在运行。请先关闭，再执行完整测试。' -ForegroundColor Red
         exit 1
     }
     Write-RuntimeSummary $existingRuntime (Read-LauncherState)
-    Write-Host 'Opening the existing WebUI instead of starting a second instance.' -ForegroundColor Cyan
+    Write-Host '检测到现有实例，正在打开 WebUI，不重复启动服务。' -ForegroundColor Cyan
     if ($env:ZW_VOICE_NONINTERACTIVE -ne '1') {
         Start-Process $webUrl
     }
@@ -235,11 +237,11 @@ if ($null -ne $existingRuntime) {
 $recordedLauncher = Get-RecordedLauncher
 if ($null -ne $recordedLauncher) {
     if ($Mode -eq 'test') {
-        Write-Host '[FAILED] Zw Voice Factory is already starting. Stop it before test mode.' -ForegroundColor Red
+        Write-Host '[失败] Zw Voice Factory 正在启动。请先关闭，再执行完整测试。' -ForegroundColor Red
         exit 1
     }
-    Write-Host "Zw Voice Factory is already starting. Launcher PID: $($recordedLauncher.state.launcher_pid)" -ForegroundColor Yellow
-    Write-Host 'Wait for the owning launcher window to report that the WebUI is ready.' -ForegroundColor DarkGray
+    Write-Host "Zw Voice Factory 已在启动中，启动器 PID：$($recordedLauncher.state.launcher_pid)" -ForegroundColor Yellow
+    Write-Host '请等待进程控制台提示 WebUI 已就绪。' -ForegroundColor DarkGray
     exit 0
 }
 
@@ -455,13 +457,13 @@ $exitCode = 0
 
 function Assert-File([string]$Path, [string]$Label) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw "$Label was not found: $Path"
+        throw "未找到 $Label：$Path"
     }
 }
 
 function Assert-Directory([string]$Path, [string]$Label) {
     if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
-        throw "$Label was not found: $Path"
+        throw "未找到 $Label：$Path"
     }
 }
 
@@ -469,7 +471,7 @@ function Assert-PortAvailable([int]$Port) {
     $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
     if ($null -ne $listener) {
         $processIds = ($listener | Select-Object -ExpandProperty OwningProcess -Unique) -join ', '
-        throw "Port $Port is already owned by process $processIds. Stop it first; this launcher will not kill unrelated processes."
+        throw "端口 $Port 已被进程 $processIds 占用。请先关闭对应程序；启动器不会结束无关进程。"
     }
 }
 
@@ -480,7 +482,7 @@ function Start-ManagedProcess {
         [string[]]$Arguments,
         [string]$WorkingDirectory
     )
-    Write-Host "[START] $Name" -ForegroundColor Cyan
+    Write-Host "[启动] $Name" -ForegroundColor Cyan
     $processId = [ZwVoiceLauncher.NativeJob]::StartInJob($jobHandle, $Executable, $Arguments, $WorkingDirectory)
     $process = [System.Diagnostics.Process]::GetProcessById($processId)
     $managedProcesses.Add($process)
@@ -498,12 +500,12 @@ function Wait-ServiceReady {
     while ([DateTime]::UtcNow -lt $deadline) {
         $Process.Refresh()
         if ($Process.HasExited) {
-            throw "$Name exited during preload with code $($Process.ExitCode)"
+            throw "$Name 在预加载期间退出，退出码：$($Process.ExitCode)"
         }
         try {
             $response = Invoke-WebRequest -UseBasicParsing -Uri $Uri -TimeoutSec 3
             if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) {
-                Write-Host "[READY] $Name" -ForegroundColor Green
+                Write-Host "[就绪] $Name" -ForegroundColor Green
                 return
             }
         } catch {
@@ -511,7 +513,7 @@ function Wait-ServiceReady {
         }
         Start-Sleep -Seconds 2
     }
-    throw "$Name did not become ready within $TimeoutSeconds seconds: $Uri"
+    throw "$Name 在 $TimeoutSeconds 秒内未就绪：$Uri"
 }
 
 function Invoke-ManagedTest {
@@ -521,23 +523,23 @@ function Invoke-ManagedTest {
         [string[]]$Arguments,
         [string]$WorkingDirectory
     )
-    Write-Host "[TEST] $Name" -ForegroundColor Yellow
+    Write-Host "[测试] $Name" -ForegroundColor Yellow
     $process = Start-ManagedProcess -Name $Name -Executable $Executable -Arguments $Arguments -WorkingDirectory $WorkingDirectory
     $testExitCode = [ZwVoiceLauncher.NativeJob]::WaitForExitCode($process.Id)
     if ($testExitCode -ne 0) {
-        throw "$Name failed with exit code $testExitCode"
+        throw "$Name 执行失败，退出码：$testExitCode"
     }
-    Write-Host "[PASS] $Name" -ForegroundColor Green
+    Write-Host "[通过] $Name" -ForegroundColor Green
 }
 
 try {
-    Assert-File $modelPython 'Model Python'
-    Assert-File $backendPython 'Backend Python'
-    Assert-File $voxcpmWorker 'VoxCPM2 Worker'
+    Assert-File $modelPython '模型 Python 环境'
+    Assert-File $backendPython '后端 Python 环境'
+    Assert-File $voxcpmWorker 'VoxCPM2 工作服务'
     Assert-File $viteScript 'Vite'
     Assert-File $tscScript 'TypeScript'
-    Assert-Directory $voxcpmSource 'VoxCPM2 source'
-    Assert-Directory $voxcpmWeights 'VoxCPM2 weights'
+    Assert-Directory $voxcpmSource 'VoxCPM2 源码目录'
+    Assert-Directory $voxcpmWeights 'VoxCPM2 权重目录'
     foreach ($port in @(9880, 9881, 8800, 5173)) { Assert-PortAvailable $port }
 
     $jobHandle = [ZwVoiceLauncher.NativeJob]::CreateKillOnCloseJob()
@@ -548,9 +550,9 @@ try {
     $env:ZW_VOICE_GPT_SOVITS_URL = 'http://127.0.0.1:9880'
     $env:ZW_VOICE_VOXCPM_URL = 'http://127.0.0.1:9881'
 
-    Write-Host 'Starting Zw Voice Factory. Initial model preload may take several minutes.' -ForegroundColor White
+    Write-Host '正在启动 Zw Voice Factory，首次预加载模型可能需要数分钟。' -ForegroundColor White
 
-    $gptProcess = Start-ManagedProcess -Name 'GPT-SoVITS preload' -Executable $modelPython -Arguments @(
+    $gptProcess = Start-ManagedProcess -Name 'GPT-SoVITS 模型预加载' -Executable $modelPython -Arguments @(
         'api_v2.py', '-a', '127.0.0.1', '-p', '9880', '-c', 'GPT_SoVITS/configs/tts_infer.yaml'
     ) -WorkingDirectory $gptRoot
     Wait-ServiceReady -Name 'GPT-SoVITS' -Uri 'http://127.0.0.1:9880/openapi.json' -Process $gptProcess -TimeoutSeconds 600
@@ -558,7 +560,7 @@ try {
     $previousPythonPath = $env:PYTHONPATH
     $env:PYTHONPATH = $voxcpmSource
     try {
-        $voxcpmProcess = Start-ManagedProcess -Name 'VoxCPM2 preload' -Executable $modelPython -Arguments @(
+        $voxcpmProcess = Start-ManagedProcess -Name 'VoxCPM2 模型预加载' -Executable $modelPython -Arguments @(
             $voxcpmWorker, '--model-path', $voxcpmWeights, '--host', '127.0.0.1', '--port', '9881', '--device', 'cuda'
         ) -WorkingDirectory $factoryRoot
     } finally {
@@ -566,15 +568,15 @@ try {
     }
     Wait-ServiceReady -Name 'VoxCPM2' -Uri 'http://127.0.0.1:9881/health' -Process $voxcpmProcess -TimeoutSeconds 600
 
-    $backendProcess = Start-ManagedProcess -Name 'FastAPI' -Executable $backendPython -Arguments @(
+    $backendProcess = Start-ManagedProcess -Name 'FastAPI 后端服务' -Executable $backendPython -Arguments @(
         '-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8800'
     ) -WorkingDirectory (Join-Path $factoryRoot 'backend')
-    Wait-ServiceReady -Name 'FastAPI' -Uri 'http://127.0.0.1:8800/api/health' -Process $backendProcess -TimeoutSeconds 90
+    Wait-ServiceReady -Name 'FastAPI 后端服务' -Uri 'http://127.0.0.1:8800/api/health' -Process $backendProcess -TimeoutSeconds 90
 
-    $frontendProcess = Start-ManagedProcess -Name 'Vite WebUI' -Executable $nodePath -Arguments @(
+    $frontendProcess = Start-ManagedProcess -Name 'Vite WebUI 前端服务' -Executable $nodePath -Arguments @(
         $viteScript, '--host', '127.0.0.1', '--port', '5173', '--strictPort'
     ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
-    Wait-ServiceReady -Name 'WebUI' -Uri 'http://127.0.0.1:5173/' -Process $frontendProcess -TimeoutSeconds 90
+    Wait-ServiceReady -Name 'WebUI 前端服务' -Uri 'http://127.0.0.1:5173/' -Process $frontendProcess -TimeoutSeconds 90
 
     Write-LauncherState @{
         gpt_sovits = $gptProcess.Id
@@ -587,31 +589,31 @@ try {
         $previousNonInteractive = $env:ZW_VOICE_NONINTERACTIVE
         $env:ZW_VOICE_NONINTERACTIVE = '1'
         try {
-            Invoke-ManagedTest -Name 'Launcher single-instance contract' -Executable $env:ComSpec -Arguments @(
+            Invoke-ManagedTest -Name '启动器单实例检查' -Executable $env:ComSpec -Arguments @(
                 '/d', '/c', (Join-Path $factoryRoot 'Start-ZwVoice.cmd'), 'run'
             ) -WorkingDirectory $factoryRoot
         } finally {
             $env:ZW_VOICE_NONINTERACTIVE = $previousNonInteractive
         }
-        Invoke-ManagedTest -Name 'Backend pytest' -Executable $backendPython -Arguments @(
+        Invoke-ManagedTest -Name '后端自动化测试' -Executable $backendPython -Arguments @(
             '-m', 'pytest', '-q'
         ) -WorkingDirectory (Join-Path $factoryRoot 'backend')
-        Invoke-ManagedTest -Name 'Frontend typecheck' -Executable $nodePath -Arguments @(
+        Invoke-ManagedTest -Name '前端类型检查' -Executable $nodePath -Arguments @(
             $tscScript, '-b'
         ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
-        Invoke-ManagedTest -Name 'Frontend production build' -Executable $nodePath -Arguments @(
+        Invoke-ManagedTest -Name '前端生产构建' -Executable $nodePath -Arguments @(
             $viteScript, 'build'
         ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
-        Write-Host 'Startup, model preload, runtime checks, and automated tests all passed.' -ForegroundColor Green
+        Write-Host '启动、模型预加载、运行状态检查和自动化测试全部通过。' -ForegroundColor Green
     } else {
-        Write-Host 'WebUI is ready: http://127.0.0.1:5173/' -ForegroundColor Green
-        Write-Host 'Close this window or press Ctrl+C to stop all managed services. Generation progress appears here.' -ForegroundColor DarkGray
+        Write-Host 'WebUI 已就绪：http://127.0.0.1:5173/' -ForegroundColor Green
+        Write-Host '关闭此窗口或按 Ctrl+C，将同步关闭全部托管服务。音频生成进度会显示在这里。' -ForegroundColor DarkGray
         Start-Process 'http://127.0.0.1:5173/'
         while ($true) {
             foreach ($process in $managedProcesses) {
                 $process.Refresh()
                 if ($process.HasExited) {
-                    throw "Managed service PID $($process.Id) exited unexpectedly with code $($process.ExitCode)"
+                    throw "托管服务 PID $($process.Id) 意外退出，退出码：$($process.ExitCode)"
                 }
             }
             Start-Sleep -Seconds 2
@@ -619,11 +621,11 @@ try {
     }
 } catch {
     $exitCode = 1
-    Write-Host "[FAILED] $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "[失败] $($_.Exception.Message)" -ForegroundColor Red
 } finally {
     Remove-LauncherStateIfOwned
     if ($jobHandle -ne [IntPtr]::Zero) {
-        Write-Host 'Stopping Zw Voice Factory child processes...' -ForegroundColor DarkGray
+        Write-Host '正在关闭 Zw Voice Factory 的全部子进程...' -ForegroundColor DarkGray
         [void][ZwVoiceLauncher.NativeJob]::CloseHandle($jobHandle)
     }
 }
