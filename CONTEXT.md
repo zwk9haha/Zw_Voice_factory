@@ -39,3 +39,15 @@ _Avoid_: GSV base voice
 **Voice Asset Review**:
 The workflow in which a user previews, regenerates, accepts, or batch-accepts canonical references and emotion variants before downstream rendering or training.
 _Avoid_: Model training
+
+**Inference Template**:
+A project-level production preset selected before text import. It fixes analysis policy and model roles for reference production and rendering without containing character identity or sentence direction.
+_Avoid_: Prompt, voice profile, director preset
+
+**Production Stage**:
+A reviewable checkpoint in the ordered path from template selection through rendering. A stage exposes its own work state without taking ownership of another stage's data.
+_Avoid_: Page, tab, pipeline node
+
+**Stability Layer**:
+An optional, benchmark-gated RVC pass after Quality Route rendering that may reduce cross-sentence identity drift. It is not a required quality renderer.
+_Avoid_: Voice source, default RVC pass

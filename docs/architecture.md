@@ -3,7 +3,8 @@
 ## Shared Casting Pipeline
 
 ```text
-novel.txt
+inference template
+  -> novel.txt
   -> story analysis
   -> character candidates with evidence and confidence
   -> alias reconciliation and false-positive rejection
@@ -13,6 +14,20 @@ novel.txt
   -> canonical-reference generation and user review
   -> emotion-variant generation and user review
 ```
+
+## Inference Template Gate
+
+An Inference Template is selected before text import. It fixes the analysis, segmentation, reference-text, and model-role defaults for a project while leaving character identity in the Character Voice Bible and sentence performance in the Director Document.
+
+For the baseline Quality Route, the template assigns distinct responsibilities:
+
+```text
+VoxCPM2         -> canonical references and emotion variants
+GPT-SoVITS      -> online sentence rendering from approved references
+RVC (optional)  -> benchmark-gated post-render identity stability
+```
+
+Changing templates may change production defaults, but it must not silently replace an accepted Canonical Reference or rewrite reviewed Director Document segments.
 
 The two public documents have separate ownership:
 

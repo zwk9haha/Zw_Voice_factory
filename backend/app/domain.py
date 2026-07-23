@@ -20,6 +20,49 @@ class CharacterTier(str, Enum):
     uncertain = "uncertain"
 
 
+class ProductionStageStatus(str, Enum):
+    complete = "complete"
+    current = "current"
+    ready = "ready"
+    blocked = "blocked"
+
+
+class StabilityPolicy(str, Enum):
+    disabled = "disabled"
+    benchmark_gated = "benchmark_gated"
+    enabled = "enabled"
+
+
+class QualityRouteConfiguration(BaseModel):
+    reference_backend: Literal["voxcpm2", "indextts2"]
+    render_backend: Literal["gpt_sovits"] = "gpt_sovits"
+    stability_backend: Literal["rvc"] | None = "rvc"
+    stability_policy: StabilityPolicy = StabilityPolicy.benchmark_gated
+
+
+class InferenceTemplate(BaseModel):
+    template_id: str
+    display_name: str
+    analysis_profile: Literal["balanced", "character_recall", "precision_first"]
+    segmentation_profile: Literal["audiobook", "dialogue_dense", "long_form"]
+    reference_text_profile: Literal["phoneme_coverage", "emotion_contrast"]
+    quality_route: QualityRouteConfiguration
+
+
+class ProductionStage(BaseModel):
+    stage_id: Literal[
+        "template",
+        "source",
+        "casting",
+        "references",
+        "emotions",
+        "director",
+        "quality_render",
+    ]
+    label: str
+    status: ProductionStageStatus
+
+
 class ReferenceAudio(BaseModel):
     reference_id: str
     character_id: str
