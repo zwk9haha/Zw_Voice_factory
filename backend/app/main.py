@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .workspace import WorkspacePayload, build_demo_workspace
 
@@ -14,6 +17,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+VOICE_SAMPLES_ROOT = Path(__file__).resolve().parents[2] / "assets" / "voice_samples"
+if VOICE_SAMPLES_ROOT.is_dir():
+    app.mount("/media/voice-samples", StaticFiles(directory=VOICE_SAMPLES_ROOT), name="voice-samples")
 
 
 @app.get("/api/health")

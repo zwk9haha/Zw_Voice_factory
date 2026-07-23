@@ -92,6 +92,8 @@ button { color: inherit; }
 .waveform--violet span { background: #b991e6; }
 .waveform--gold span { background: #d8b466; }
 .transport { gap: 8px; padding-top: 7px; color: #8c909c; font-size: 11px; }
+.audio-preview { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.audio-feedback { min-width: 0; overflow: hidden; color: #77c9ba; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .accept-button { margin-left: auto; height: 27px; padding: 0 8px; border: 1px solid #35645d; background: #19332f; color: #73cebd; }
 .text-button { min-height: 26px; padding: 0 5px; border: 0; background: transparent; color: #a8abb5; font-size: 11px; }
 .text-button:hover { color: #f1f2f5; }
@@ -185,6 +187,7 @@ button { color: inherit; }
 .evidence-block > span { color: #8b8f9b; font-size: 10px; }
 .evidence-block p { margin: 9px 0 0; color: #d1d3da; font-size: 12px; line-height: 1.6; }
 .stage-wave { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; margin: 18px 18px 0; }
+.stage-audio { width: 190px; height: 30px; }
 
 @media (max-width: 1180px) {
   .route-context { grid-template-columns: minmax(210px, 260px) minmax(380px, 1fr) 195px; }

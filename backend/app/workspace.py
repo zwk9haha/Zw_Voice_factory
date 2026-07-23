@@ -36,6 +36,7 @@ class WorkspaceCharacter(BaseModel):
     voice_prompt: str
     reference_status: ReviewStatus
     reference_backend: Literal["voxcpm2", "indextts2", "uploaded"]
+    preview_audio_url: str | None = None
     emotion_variants: list[str]
     color: Literal["teal", "violet", "gold"]
 
@@ -116,6 +117,7 @@ def build_demo_workspace() -> WorkspacePayload:
                 voice_prompt="成熟、清晰、稳定的男声，叙述克制，具有空间感",
                 reference_status=ReviewStatus.accepted,
                 reference_backend="voxcpm2",
+                preview_audio_url="/media/voice-samples/curated/elder/male/voice_ref_34d05b99307a9c.wav",
                 emotion_variants=["自然", "庄重", "紧张"],
                 color="teal",
             ),
@@ -127,6 +129,7 @@ def build_demo_workspace() -> WorkspacePayload:
                 voice_prompt="青年男声，清亮但有韧劲，克制中保留爆发力",
                 reference_status=ReviewStatus.accepted,
                 reference_backend="voxcpm2",
+                preview_audio_url="/media/voice-samples/curated/young_adult/male/voice_ref_955e37aef1a1b7.wav",
                 emotion_variants=["自然", "愤怒", "悲伤"],
                 color="violet",
             ),
@@ -138,6 +141,7 @@ def build_demo_workspace() -> WorkspacePayload:
                 voice_prompt="中年男声，冷淡、清晰、公式化",
                 reference_status=ReviewStatus.pending,
                 reference_backend="voxcpm2",
+                preview_audio_url="/media/voice-samples/curated/elder/male/voice_ref_0f3bba4cd9d384.wav",
                 emotion_variants=[],
                 color="gold",
             ),

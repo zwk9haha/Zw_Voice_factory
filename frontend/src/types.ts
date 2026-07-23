@@ -33,6 +33,7 @@ export interface CharacterSummary {
   voice_prompt: string;
   reference_status: "pending" | "accepted" | "rejected";
   reference_backend: "voxcpm2" | "indextts2" | "uploaded";
+  preview_audio_url: string | null;
   emotion_variants: string[];
   color: "teal" | "violet" | "gold";
 }

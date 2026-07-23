@@ -1,4 +1,5 @@
 import { ArrowRight, Check, CircleAlert, FileText, Gauge, Mic2, Play, RefreshCw, SlidersHorizontal, Sparkles, Upload, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { InferenceTemplate, ProductionStageId, WorkspacePayload } from "./types";
 import { Waveform } from "./Waveform";
 
@@ -186,12 +187,23 @@ function TemplateWorkspace({ selectedTemplate, workspace, onTemplateChange, onSt
   );
 }
 
-export function PreparationWorkspace(props: PreparationWorkspaceProps) {
-  if (props.activeStage === "template") {
-    return <TemplateWorkspace {...props} />;
-  }
+type GenericPreparationWorkspaceProps = Omit<PreparationWorkspaceProps, "activeStage"> & {
+  activeStage: Exclude<PreparationStageId, "template">;
+};
 
+function GenericPreparationWorkspace(props: GenericPreparationWorkspaceProps) {
   const data = stageData[props.activeStage];
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  useEffect(() => setSelectedIndex(0), [props.activeStage]);
+  const selectedItem = data.items[selectedIndex] ?? data.items[0];
+  const selectedFields = props.activeStage === "source" && selectedIndex === 1
+    ? [
+        { label: "文本类型", value: "验收文本" },
+        { label: "正文字符", value: "24,861" },
+        { label: "目标章节", value: "第 1 章 · 测试段" },
+        { label: "预计片段", value: "500 句" },
+      ]
+    : data.fields;
   const stageIcon = props.activeStage === "source" ? FileText : props.activeStage === "casting" ? Users : props.activeStage === "references" ? Mic2 : props.activeStage === "emotions" ? Sparkles : SlidersHorizontal;
   const StageIcon = stageIcon;
   const previewCharacter = props.workspace.characters[1];
@@ -202,7 +214,7 @@ export function PreparationWorkspace(props: PreparationWorkspaceProps) {
         <div className="pane-heading"><div><span className="eyebrow">{data.eyebrow}</span><h2>{data.title}</h2></div><span className="list-count">{data.items.length}</span></div>
         <div className="prep-list">
           {data.items.map((item, index) => (
-            <button key={item.title} className={index === 0 ? "selected" : ""}>
+            <button key={item.title} className={index === selectedIndex ? "selected" : ""} onClick={() => setSelectedIndex(index)}>
               <StageIcon size={16} />
               <span><strong>{item.title}</strong><small>{item.meta}</small></span>
               <em>{item.status}</em>
@@ -213,10 +225,10 @@ export function PreparationWorkspace(props: PreparationWorkspaceProps) {
       </aside>
 
       <section className="prep-main-pane">
-        <div className="prep-titlebar"><div><span className="eyebrow">CURRENT SELECTION</span><h2>{data.items[0].title}</h2></div><button className="icon-button" title="刷新"><RefreshCw size={15} /></button></div>
-        {props.activeStage === "references" && <div className="stage-wave"><Waveform color={previewCharacter.color} /><button className="icon-button" title="播放参考"><Play size={15} /></button></div>}
+        <div className="prep-titlebar"><div><span className="eyebrow">CURRENT SELECTION</span><h2>{selectedItem.title}</h2></div><button className="icon-button" title="刷新"><RefreshCw size={15} /></button></div>
+        {props.activeStage === "references" && <div className="stage-wave"><Waveform color={previewCharacter.color} /><audio className="stage-audio" controls preload="metadata" src={previewCharacter.preview_audio_url ?? undefined} aria-label="标准参考试听" /></div>}
         <div className="field-table">
-          {data.fields.map((field) => <div key={field.label}><span>{field.label}</span><strong>{field.value}</strong></div>)}
+          {selectedFields.map((field) => <div key={field.label}><span>{field.label}</span><strong>{field.value}</strong></div>)}
         </div>
         {props.activeStage === "casting" && <div className="evidence-block"><span>证据摘录</span><p>“萧炎，斗之力，三段。级别，低级。”</p><p>“三十年河东，三十年河西，莫欺少年穷。”</p></div>}
       </section>
@@ -230,4 +242,12 @@ export function PreparationWorkspace(props: PreparationWorkspaceProps) {
       </aside>
     </section>
   );
+}
+
+export function PreparationWorkspace(props: PreparationWorkspaceProps) {
+  const activeStage = props.activeStage;
+  if (activeStage === "template") {
+    return <TemplateWorkspace {...props} />;
+  }
+  return <GenericPreparationWorkspace {...props} activeStage={activeStage} />;
 }

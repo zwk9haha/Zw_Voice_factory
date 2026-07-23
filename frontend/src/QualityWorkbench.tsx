@@ -1,5 +1,5 @@
 import { Check, Download, FileAudio, ListMusic, Pause, Play, Plus, RefreshCw, Sparkles, Users, WandSparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WorkspacePayload } from "./types";
 import { Waveform } from "./Waveform";
 
@@ -10,10 +10,43 @@ interface QualityWorkbenchProps {
 export function QualityWorkbench({ workspace }: QualityWorkbenchProps) {
   const [activeCharacter, setActiveCharacter] = useState("xiao_yan");
   const [playing, setPlaying] = useState<string | null>(null);
+  const [audioFeedback, setAudioFeedback] = useState("参考试听素材");
+  const audioRef = useRef<HTMLAudioElement>(null);
   const active = workspace.characters.find((item) => item.character_id === activeCharacter) ?? workspace.characters[0];
+
+  useEffect(() => {
+    return () => audioRef.current?.pause();
+  }, []);
+
+  function toggleAudio(audioId: string, audioUrl: string | null) {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!audioUrl) {
+      setPlaying(null);
+      setAudioFeedback("暂无可播放音频");
+      return;
+    }
+    if (playing === audioId && !audio.paused) {
+      audio.pause();
+      setPlaying(null);
+      setAudioFeedback("已暂停 · 参考试听素材");
+      return;
+    }
+    audio.pause();
+    audio.src = audioUrl;
+    audio.currentTime = 0;
+    audio.load();
+    setPlaying(audioId);
+    setAudioFeedback("加载中 · 参考试听素材");
+    audio.play().then(() => setAudioFeedback("播放中 · 参考试听素材")).catch(() => {
+      setPlaying(null);
+      setAudioFeedback("浏览器阻止了播放，请再次点击");
+    });
+  }
 
   return (
     <section className="workspace-grid">
+      <audio ref={audioRef} className="audio-preview" aria-hidden="true" preload="metadata" onEnded={() => { setPlaying(null); setAudioFeedback("播放完成 · 参考试听素材"); }} onError={() => { setPlaying(null); setAudioFeedback("试听音频加载失败"); }} />
       <aside className="cast-pane">
         <div className="pane-heading">
           <div><span className="eyebrow">VOICE CAST</span><h2>角色声线</h2></div>
@@ -34,10 +67,10 @@ export function QualityWorkbench({ workspace }: QualityWorkbenchProps) {
           <textarea value={active.voice_prompt} readOnly aria-label="声线描述" />
           <div className="reference-toolbar"><span>标准参考 · {active.reference_backend === "voxcpm2" ? "VoxCPM2" : "IndexTTS2"}</span><button className="text-button"><RefreshCw size={14} />重新生成</button></div>
           <Waveform color={active.color} />
-          <div className="transport"><button className="icon-button" title="播放标准参考" onClick={() => setPlaying(playing === "reference" ? null : "reference")}>{playing === "reference" ? <Pause size={16} /> : <Play size={16} />}</button><span>00:10</span><button className="accept-button"><Check size={14} />已采用</button></div>
+          <div className="transport"><button className="icon-button" title={playing === "reference" ? "暂停标准参考" : "播放标准参考"} onClick={() => toggleAudio("reference", active.preview_audio_url)}>{playing === "reference" ? <Pause size={16} /> : <Play size={16} />}</button><span>00:10</span><span className="audio-feedback" role="status">{audioFeedback}</span><button className="accept-button"><Check size={14} />已采用</button></div>
           <div className="emotion-header"><span>情绪子体</span><button className="icon-button" title="生成情绪子体"><Sparkles size={15} /></button></div>
           <div className="emotion-list">
-            {active.emotion_variants.map((emotion) => <button key={emotion}><Play size={12} /><span>{emotion}</span></button>)}
+            {active.emotion_variants.map((emotion) => <button key={emotion} onClick={() => toggleAudio(`emotion:${active.character_id}:${emotion}`, active.preview_audio_url)}><Play size={12} /><span>{emotion}</span></button>)}
             {!active.emotion_variants.length && <span className="empty-inline">尚未生成</span>}
           </div>
         </section>
@@ -53,7 +86,7 @@ export function QualityWorkbench({ workspace }: QualityWorkbenchProps) {
               <article className="script-row" key={segment.segment_id}>
                 <div className="segment-meta"><span className={`cast-dot cast-dot--${character.color}`} /><strong>{segment.speaker}</strong><span className="emotion-chip">{segment.emotion}</span></div>
                 <div className="segment-text"><span className="line-number">{String(index + 1).padStart(3, "0")}</span><p>{segment.text}</p></div>
-                <button className="icon-button" title="生成本句"><Play size={16} /></button>
+                <button className="icon-button" title={playing === segment.segment_id ? "暂停本句" : "播放本句"} onClick={() => toggleAudio(segment.segment_id, character.preview_audio_url)}>{playing === segment.segment_id ? <Pause size={16} /> : <Play size={16} />}</button>
               </article>
             );
           })}
@@ -68,10 +101,10 @@ export function QualityWorkbench({ workspace }: QualityWorkbenchProps) {
             const character = workspace.characters.find((item) => item.character_id === segment.character_id) ?? workspace.characters[0];
             return (
               <article className="result-card" key={segment.segment_id}>
-                <header><div><span className={`cast-dot cast-dot--${character.color}`} /><strong>{segment.speaker}</strong><span>{segment.emotion}</span></div><span className="render-time">{index === 2 ? "生成中" : `${(1.3 + index * 0.4).toFixed(1)}s`}</span></header>
+                <header><div><span className={`cast-dot cast-dot--${character.color}`} /><strong>{segment.speaker}</strong><span>{segment.emotion}</span></div><span className="render-time">{index === 2 ? "待生成" : "参考试听"}</span></header>
                 <p>{segment.text}</p>
                 <Waveform color={character.color} />
-                <footer><button className="text-button"><RefreshCw size={13} />重新生成</button><button className="text-button"><Sparkles size={13} />情绪参考</button><span className="spacer" /><button className="icon-button" title="播放结果" onClick={() => setPlaying(playing === segment.segment_id ? null : segment.segment_id)}>{playing === segment.segment_id ? <Pause size={15} /> : <Play size={15} />}</button><button className="icon-button" title="下载音频"><Download size={15} /></button></footer>
+                <footer><button className="text-button"><RefreshCw size={13} />重新生成</button><button className="text-button" onClick={() => toggleAudio(`emotion-result:${segment.segment_id}`, character.preview_audio_url)}><Sparkles size={13} />情绪参考</button><span className="spacer" /><button className="icon-button" title={playing === segment.segment_id ? "暂停结果" : "播放结果"} onClick={() => toggleAudio(segment.segment_id, character.preview_audio_url)}>{playing === segment.segment_id ? <Pause size={15} /> : <Play size={15} />}</button><button className="icon-button" title="下载音频"><Download size={15} /></button></footer>
               </article>
             );
           })}

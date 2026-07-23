@@ -47,9 +47,9 @@ export const demoWorkspace: WorkspacePayload = {
     quality_route: { reference_backend: "voxcpm2", render_backend: "gpt_sovits", stability_backend: "rvc", stability_policy: "benchmark_gated" },
   },
   characters: [
-    { character_id: "narrator", display_name: "旁白", tier: "core", importance: 1, voice_prompt: "成熟、清晰、稳定的男声，叙述克制，具有空间感", reference_status: "accepted", reference_backend: "voxcpm2", emotion_variants: ["自然", "庄重", "紧张"], color: "teal" },
-    { character_id: "xiao_yan", display_name: "萧炎", tier: "core", importance: 0.94, voice_prompt: "青年男声，清亮但有韧劲，克制中保留爆发力", reference_status: "accepted", reference_backend: "voxcpm2", emotion_variants: ["自然", "愤怒", "悲伤"], color: "violet" },
-    { character_id: "test_officer", display_name: "测验员", tier: "supporting", importance: 0.42, voice_prompt: "中年男声，冷淡、清晰、公式化", reference_status: "pending", reference_backend: "voxcpm2", emotion_variants: [], color: "gold" },
+    { character_id: "narrator", display_name: "旁白", tier: "core", importance: 1, voice_prompt: "成熟、清晰、稳定的男声，叙述克制，具有空间感", reference_status: "accepted", reference_backend: "voxcpm2", preview_audio_url: "/media/voice-samples/curated/elder/male/voice_ref_34d05b99307a9c.wav", emotion_variants: ["自然", "庄重", "紧张"], color: "teal" },
+    { character_id: "xiao_yan", display_name: "萧炎", tier: "core", importance: 0.94, voice_prompt: "青年男声，清亮但有韧劲，克制中保留爆发力", reference_status: "accepted", reference_backend: "voxcpm2", preview_audio_url: "/media/voice-samples/curated/young_adult/male/voice_ref_955e37aef1a1b7.wav", emotion_variants: ["自然", "愤怒", "悲伤"], color: "violet" },
+    { character_id: "test_officer", display_name: "测验员", tier: "supporting", importance: 0.42, voice_prompt: "中年男声，冷淡、清晰、公式化", reference_status: "pending", reference_backend: "voxcpm2", preview_audio_url: "/media/voice-samples/curated/elder/male/voice_ref_0f3bba4cd9d384.wav", emotion_variants: [], color: "gold" },
   ],
   segments: [
     { segment_id: "s001", character_id: "narrator", speaker: "旁白", emotion: "紧张", text: "望着测验魔石碑上闪亮的五个大字，少年面无表情。" },
