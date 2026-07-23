@@ -7,6 +7,9 @@ if /i "%~1"=="run" goto launch_visible
 if /i "%~1"=="own" goto own
 if not "%~1"=="" goto direct
 
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start_factory.ps1" focus >nul 2>&1
+if "%ERRORLEVEL%"=="0" exit /b 0
+
 :menu
 cls
 echo ========================================================

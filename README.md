@@ -37,7 +37,7 @@ The first command prints the plan. The second copies this seed, moves approved r
 
 ## Start And Test
 
-Double-click `Start-ZwVoice.cmd` to open the launcher menu. Starting from the menu preloads GPT-SoVITS and VoxCPM2, then starts FastAPI and Vite. All four processes are attached to one Windows Job Object, so closing the owning launcher window also closes every process it started.
+Double-click `Start-ZwVoice.cmd` to open the launcher menu. Starting from the menu preloads GPT-SoVITS and VoxCPM2, then starts FastAPI and Vite. All four processes are attached to one Windows Job Object, so closing the owning launcher window also closes every process it started. If an instance already exists, double-clicking activates that owner window instead of opening a second menu.
 
 ```powershell
 .\Start-ZwVoice.cmd run

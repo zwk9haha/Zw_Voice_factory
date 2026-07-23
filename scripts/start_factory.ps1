@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('run', 'test', 'status', 'stop')]
+    [ValidateSet('run', 'test', 'status', 'stop', 'focus')]
     [string]$Mode = 'run'
 )
 
@@ -123,6 +123,32 @@ function Get-RecordedLauncher {
     return [pscustomobject]@{ state = $state; process = $launcherProcess }
 }
 
+function Focus-RecordedLauncher {
+    $recordedLauncher = Get-RecordedLauncher
+    if ($null -eq $recordedLauncher) {
+        return $false
+    }
+    $consoleProcess = Get-Process -Id $recordedLauncher.process.ParentProcessId -ErrorAction SilentlyContinue
+    if ($null -eq $consoleProcess -or $consoleProcess.MainWindowHandle -eq [IntPtr]::Zero) {
+        return $false
+    }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ZwVoiceWindow {
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr handle, int command);
+}
+'@
+    [void][ZwVoiceWindow]::ShowWindowAsync($consoleProcess.MainWindowHandle, 9)
+    [void][ZwVoiceWindow]::SetForegroundWindow($consoleProcess.MainWindowHandle)
+    Write-Host "Activated the owner launcher window (PID $($recordedLauncher.state.launcher_pid))." -ForegroundColor Green
+    if ($null -ne (Get-HealthyFactoryRuntime)) {
+        Start-Process $webUrl
+    }
+    return $true
+}
+
 function Stop-RecordedLauncher {
     $state = Read-LauncherState
     $runtime = Get-HealthyFactoryRuntime
@@ -183,6 +209,13 @@ if ($Mode -eq 'stop') {
         Write-Host "[FAILED] $($_.Exception.Message)" -ForegroundColor Red
         exit 1
     }
+}
+
+if ($Mode -eq 'focus') {
+    if (Focus-RecordedLauncher) {
+        exit 0
+    }
+    exit 1
 }
 
 $existingRuntime = Get-HealthyFactoryRuntime
