@@ -224,12 +224,14 @@ a.icon-button { color: inherit; text-decoration: none; }
 .hidden-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .preparation-actions { min-height: 52px; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 10px 18px; border-bottom: 1px solid #292b33; background: #15161c; }
 .preparation-actions .secondary-button { min-width: 112px; }
-.casting-threshold-control { min-height: 58px; display: grid; grid-template-columns: minmax(170px, 230px) minmax(160px, 1fr) 30px; align-items: center; gap: 14px; padding: 9px 18px; border-bottom: 1px solid #292b33; background: #15161c; }
+.casting-threshold-control { min-height: 58px; display: grid; grid-template-columns: minmax(170px, 230px) minmax(160px, 1fr) 30px auto; align-items: center; gap: 14px; padding: 9px 18px; border-bottom: 1px solid #292b33; background: #15161c; }
 .casting-threshold-control > div { min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .casting-threshold-control span { color: #8b8f9c; font-size: 10px; }
 .casting-threshold-control strong { color: #d8dae1; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .casting-threshold-control input[type="range"] { width: 100%; height: 18px; margin: 0; accent-color: #a981d4; cursor: pointer; }
 .casting-threshold-control input[type="range"]:disabled { cursor: not-allowed; }
+.threshold-lock-button { min-width: 106px; }
+.threshold-lock-button.active { border-color: #4f8b81; color: #63bcae; background: #1b3732; }
 .operation-feedback { min-height: 34px; display: flex; align-items: center; gap: 7px; padding: 8px 18px; color: #8fcfc3; background: #101116; font-size: 10px; }
 .empty-state { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 72px; margin: 0; padding: 16px; color: #717684; font-size: 11px; text-align: center; }
 .project-preparation .field-table { margin-top: 8px; }
@@ -362,6 +364,140 @@ a.icon-button { color: inherit; text-decoration: none; }
 :root[data-theme="light"] .primary-button { border-color: #805ca8; background: #8d67b6; color: #ffffff; }
 :root[data-theme="light"] .stop-button { border-color: #d8aaa5; background: #fff1ef; color: #a74e45; }
 
+/* Low-glare light surfaces: cool gray work areas with a restrained teal action color. */
+:root[data-theme="light"] {
+  --light-page: #eaf2f3;
+  --light-surface: #f2f7f7;
+  --light-surface-raised: #f6f9f9;
+  --light-surface-muted: #e5eeee;
+  --light-border: #d2dfe1;
+  --light-text: #26353d;
+  --light-muted: #718089;
+  --light-teal: #0f9f92;
+  --light-teal-soft: #d7efeb;
+}
+:root[data-theme="light"] body,
+:root[data-theme="light"] .app-shell { background: var(--light-page); color: var(--light-text); }
+:root[data-theme="light"] .resource-strip,
+:root[data-theme="light"] .topbar,
+:root[data-theme="light"] .workflow-nav,
+:root[data-theme="light"] .route-context,
+:root[data-theme="light"] .cast-pane,
+:root[data-theme="light"] .result-pane,
+:root[data-theme="light"] .prep-list-pane,
+:root[data-theme="light"] .prep-check-pane,
+:root[data-theme="light"] .prep-list-pane,
+:root[data-theme="light"] .prep-check-pane { background: var(--light-surface); border-color: var(--light-border); }
+:root[data-theme="light"] .script-pane,
+:root[data-theme="light"] .prep-main-pane,
+:root[data-theme="light"] .operation-feedback,
+:root[data-theme="light"] .stage-action,
+:root[data-theme="light"] .export-bar,
+:root[data-theme="light"] .timeline { background: var(--light-surface-raised); }
+:root[data-theme="light"] .casting-threshold-control { background: var(--light-surface); }
+:root[data-theme="light"] .casting-threshold-control strong,
+:root[data-theme="light"] .resource-metric > b { color: var(--light-text); }
+:root[data-theme="light"] .config-grid { background: var(--light-border); }
+:root[data-theme="light"] .pane-heading,
+:root[data-theme="light"] .prep-titlebar,
+:root[data-theme="light"] .preparation-actions,
+:root[data-theme="light"] .casting-threshold-control,
+:root[data-theme="light"] .field-table > div,
+:root[data-theme="light"] .checkpoint-list > div,
+:root[data-theme="light"] .model-role-head,
+:root[data-theme="light"] .model-role-table > div,
+:root[data-theme="light"] .script-row,
+:root[data-theme="light"] .script-table-head { border-color: var(--light-border); }
+:root[data-theme="light"] .project-switch,
+:root[data-theme="light"] .icon-button,
+:root[data-theme="light"] .secondary-button,
+:root[data-theme="light"] .import-button,
+:root[data-theme="light"] .config-grid > div > strong,
+:root[data-theme="light"] .emotion-list button,
+:root[data-theme="light"] .reference-select-toggle { border-color: #c6d6d8; color: #3b4c54; background: var(--light-surface-muted); }
+:root[data-theme="light"] .project-switch:hover,
+:root[data-theme="light"] .icon-button:hover,
+:root[data-theme="light"] .secondary-button:hover,
+:root[data-theme="light"] .import-button:hover,
+:root[data-theme="light"] .emotion-list button:hover { border-color: #94c6c0; background: #dcefed; }
+:root[data-theme="light"] .route-switch { border-color: #c5d6d8; background: #e2ecee; }
+:root[data-theme="light"] .route-switch button { color: #78878e; }
+:root[data-theme="light"] .route-switch button.active { background: var(--light-teal-soft); color: #087a70; }
+:root[data-theme="light"] .workflow-nav button { color: #7b8a91; border-color: var(--light-border); }
+:root[data-theme="light"] .workflow-nav button:hover,
+:root[data-theme="light"] .workflow-nav button.active { color: #1e4e4b; background: #dcefed; }
+:root[data-theme="light"] .workflow-nav button.active { box-shadow: inset 0 -2px var(--light-teal); }
+:root[data-theme="light"] .prep-list > button,
+:root[data-theme="light"] .reference-cast-row,
+:root[data-theme="light"] .cast-item,
+:root[data-theme="light"] .result-card,
+:root[data-theme="light"] .config-grid > div { color: #4c5d64; border-color: transparent; background: #edf4f4; }
+:root[data-theme="light"] .prep-list > button:hover,
+:root[data-theme="light"] .reference-cast-row:hover,
+:root[data-theme="light"] .cast-item:hover { background: #e1efed; }
+:root[data-theme="light"] .prep-list > button.selected,
+:root[data-theme="light"] .reference-cast-row.selected,
+:root[data-theme="light"] .cast-item.selected { border-color: #8fc8c1; color: #244d4a; background: #dcefed; }
+:root[data-theme="light"] .reference-select-toggle.active,
+:root[data-theme="light"] .threshold-lock-button.active { border-color: #8bc9c1; color: #087a70; background: var(--light-teal-soft); }
+:root[data-theme="light"] .primary-button { border-color: #078d80; background: var(--light-teal); color: #f3fbfa; }
+:root[data-theme="light"] .primary-button:hover { border-color: #08786e; background: #078e82; }
+:root[data-theme="light"] .stop-button { border-color: #e0b6b0; background: #f8e9e6; color: #a34f46; }
+:root[data-theme="light"] .stability-control input:checked + .toggle-track { border-color: #8bc9c1; background: var(--light-teal-soft); }
+:root[data-theme="light"] .stability-control input:checked + .toggle-track span { background: var(--light-teal); }
+:root[data-theme="light"] .reference-preview,
+:root[data-theme="light"] .preparation-preview,
+:root[data-theme="light"] .evidence-block,
+:root[data-theme="light"] .config-grid > div,
+:root[data-theme="light"] .model-role-table,
+:root[data-theme="light"] .field-table { border-color: var(--light-border); background: #edf4f4; }
+:root[data-theme="light"] .waveform,
+:root[data-theme="light"] .job-progress,
+:root[data-theme="light"] .reference-empty-audio,
+:root[data-theme="light"] .reference-voice-editor textarea,
+:root[data-theme="light"] .voice-editor textarea { border-color: #cbdadc; background: #e7f0f1; color: var(--light-text); }
+:root[data-theme="light"] .resource-metric > i,
+:root[data-theme="light"] .timeline-track { background: #ccdcde; }
+:root[data-theme="light"] .resource-metric > i > span,
+:root[data-theme="light"] .timeline-track span { background: var(--light-teal); }
+:root[data-theme="light"] .brand strong,
+:root[data-theme="light"] .prep-list strong,
+:root[data-theme="light"] .field-table strong,
+:root[data-theme="light"] .checkpoint-list strong,
+:root[data-theme="light"] .preview-summary strong,
+:root[data-theme="light"] .preview-heading,
+:root[data-theme="light"] .preview-section > p,
+:root[data-theme="light"] .readiness-list strong,
+:root[data-theme="light"] .reference-copy > p,
+:root[data-theme="light"] .segment-text p,
+:root[data-theme="light"] .evidence-block p,
+:root[data-theme="light"] .model-role-table strong { color: var(--light-text); }
+:root[data-theme="light"] .brand span,
+:root[data-theme="light"] .eyebrow,
+:root[data-theme="light"] .prep-list small,
+:root[data-theme="light"] .field-table span,
+:root[data-theme="light"] .preview-summary span,
+:root[data-theme="light"] .preview-section > span,
+:root[data-theme="light"] .reference-copy > span,
+:root[data-theme="light"] .resource-metric,
+:root[data-theme="light"] .resource-metrics > small { color: var(--light-muted); }
+:root[data-theme="light"] .route-pipeline strong,
+:root[data-theme="light"] .template-context strong { color: #3d555c; }
+:root[data-theme="light"] .route-pipeline span.active strong,
+:root[data-theme="light"] .health { color: var(--light-teal); }
+:root[data-theme="light"] .accept-button { border-color: #8bc9c1; color: #087a70; background: var(--light-teal-soft); }
+:root[data-theme="light"] .text-button { color: #53666e; }
+:root[data-theme="light"] .text-button:hover { color: #087a70; }
+:root[data-theme="light"] .status--accepted,
+:root[data-theme="light"] .preview-tags em { border-color: #9bcfc8; color: #087a70; background: #dbefec; }
+:root[data-theme="light"] .status--pending { color: #8b6b20; background: #f3ead1; }
+:root[data-theme="light"] .preview-tags em.rejected { border-color: #dfbbb6; color: #a35850; background: #f4e5e2; }
+:root[data-theme="light"] .toggle-track { border-color: #c3d3d5; background: #dce7e8; }
+:root[data-theme="light"] .toggle-track span { background: #8d9da3; }
+:root[data-theme="light"] .workflow-nav button.complete .stage-index { border-color: #8bc9c1; color: #087a70; background: var(--light-teal-soft); }
+:root[data-theme="light"] .workflow-nav button.active .stage-index { border-color: #79bbb3; color: #087a70; background: #cde8e4; }
+:root[data-theme="light"] .job-progress > small { color: #3f565d; }
+
 @media (max-width: 1180px) {
   .route-context { grid-template-columns: minmax(210px, 260px) minmax(380px, 1fr) 195px; }
   .gpu-state { display: none; }
@@ -399,6 +535,7 @@ a.icon-button { color: inherit; text-decoration: none; }
   .preparation-actions .secondary-button { flex: 1 1 140px; }
   .casting-threshold-control { grid-template-columns: minmax(140px, 1fr) 30px; }
   .casting-threshold-control > input { grid-column: 1 / -1; grid-row: 2; }
+  .threshold-lock-button { grid-column: 1 / -1; grid-row: 3; width: 100%; }
   .prep-list-pane, .prep-main-pane, .prep-check-pane { min-height: auto; border: 0; border-bottom: 1px solid #2b2d35; }
   .prep-list { max-height: 300px; }
   .config-grid { grid-template-columns: 1fr; }

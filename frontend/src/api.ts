@@ -63,6 +63,16 @@ export async function updateReferenceThreshold(projectId: string, automaticThres
   );
 }
 
+export async function updateAutomaticReferenceLock(projectId: string, automaticItemsLocked: boolean): Promise<PreparationPreview> {
+  return responseJson<PreparationPreview>(
+    await fetch(`/api/projects/${encodeURIComponent(projectId)}/reference-settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ automatic_items_locked: automaticItemsLocked }),
+    }),
+  );
+}
+
 export async function updateReferenceVoicePrompt(projectId: string, referenceId: string, voicePrompt: string): Promise<PreparationPreview> {
   return responseJson<PreparationPreview>(
     await fetch(`/api/projects/${encodeURIComponent(projectId)}/references/${encodeURIComponent(referenceId)}`, {

@@ -192,6 +192,7 @@ export interface PreparationPreview {
     project_id: string;
     generation_backend: "voxcpm2";
     automatic_threshold: number;
+    automatic_items_locked: boolean;
     items: ReferencePlanItem[];
   } | null;
   director_doc: {

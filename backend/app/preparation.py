@@ -27,7 +27,7 @@ PreparationAction = Literal["analyze", "extract_characters", "generate_director"
 ReferenceSelectionMode = Literal["automatic", "optional", "narrator_default"]
 ReferenceGenerationStatus = Literal["not_generated", "queued", "running", "generated", "failed"]
 
-REFERENCE_PLAN_SCHEMA_VERSION = 2
+REFERENCE_PLAN_SCHEMA_VERSION = 3
 REFERENCE_GENERATION_THRESHOLD = 0.10
 REFERENCE_TEXT = "雨后的长街渐渐安静下来，我望着远处的灯火，平稳地说出今天的决定。"
 FEMALE_CLUES = ("她", "女子", "少女", "小姐", "母亲", "姐姐", "妹妹", "妻子", "薰", "熏", "嫣", "妃", "仙")
@@ -183,6 +183,7 @@ class ReferencePlan(BaseModel):
     project_id: str
     generation_backend: Literal["voxcpm2"] = "voxcpm2"
     automatic_threshold: float = REFERENCE_GENERATION_THRESHOLD
+    automatic_items_locked: bool = True
     items: list[ReferencePlanItem]
 
 
@@ -212,7 +213,14 @@ class ReferenceUpdateRequest(BaseModel):
 
 
 class ReferenceSettingsRequest(BaseModel):
-    automatic_threshold: float = Field(ge=0.01, le=1)
+    automatic_threshold: float | None = Field(default=None, ge=0.01, le=1)
+    automatic_items_locked: bool | None = None
+
+    @model_validator(mode="after")
+    def require_setting(self) -> "ReferenceSettingsRequest":
+        if self.automatic_threshold is None and self.automatic_items_locked is None:
+            raise ValueError("至少需要提交一个参考计划设置")
+        return self
 
 
 class PreparationService:
@@ -266,8 +274,12 @@ class PreparationService:
                     self._write_model(project_id, "reference_plan.json", reference_plan)
         elif reference_plan is not None and reference_plan.schema_version < REFERENCE_PLAN_SCHEMA_VERSION:
             with self._reference_lock:
+                previous_version = reference_plan.schema_version
+                if previous_version < 2:
+                    self._apply_reference_threshold(reference_plan, REFERENCE_GENERATION_THRESHOLD)
+                if previous_version < 3:
+                    self._apply_reference_lock(reference_plan, True)
                 reference_plan.schema_version = REFERENCE_PLAN_SCHEMA_VERSION
-                self._apply_reference_threshold(reference_plan, REFERENCE_GENERATION_THRESHOLD)
                 self._write_model(project_id, "reference_plan.json", reference_plan)
         director = self._read_model(project_id, "director_doc.json", DirectorDocument)
         return PreparationPreview(
@@ -433,10 +445,11 @@ class PreparationService:
             self._write_model(project_id, "reference_plan.json", plan)
         return self.preview(project_id)
 
-    def update_reference_threshold(
+    def update_reference_settings(
         self,
         project_id: str,
-        automatic_threshold: float,
+        automatic_threshold: float | None,
+        automatic_items_locked: bool | None,
     ) -> PreparationPreview:
         with self._reference_lock:
             plan = self._require_model(
@@ -445,7 +458,10 @@ class PreparationService:
                 ReferencePlan,
                 "请先提取并审核角色",
             )
-            self._apply_reference_threshold(plan, automatic_threshold)
+            if automatic_threshold is not None:
+                self._apply_reference_threshold(plan, automatic_threshold)
+            if automatic_items_locked is not None:
+                self._apply_reference_lock(plan, automatic_items_locked)
             self._write_model(project_id, "reference_plan.json", plan)
         return self.preview(project_id)
 
@@ -461,7 +477,18 @@ class PreparationService:
             automatic = item.importance >= automatic_threshold
             item.selection_mode = "automatic" if automatic else "optional"
             item.selected = automatic or manually_selected
-            item.locked = automatic
+            item.locked = automatic and plan.automatic_items_locked
+
+    @staticmethod
+    def _apply_reference_lock(plan: ReferencePlan, automatic_items_locked: bool) -> None:
+        plan.automatic_items_locked = automatic_items_locked
+        for item in plan.items:
+            if item.selection_mode == "narrator_default":
+                item.locked = True
+            elif item.selection_mode == "automatic":
+                item.locked = automatic_items_locked
+            else:
+                item.locked = False
 
     def record_reference_job(
         self,
@@ -849,7 +876,11 @@ def create_preparation_router(service: PreparationService) -> APIRouter:
         request: ReferenceSettingsRequest,
     ) -> PreparationPreview:
         try:
-            return service.update_reference_threshold(project_id, request.automatic_threshold)
+            return service.update_reference_settings(
+                project_id,
+                request.automatic_threshold,
+                request.automatic_items_locked,
+            )
         except PreparationProblem as problem:
             raise handle(problem) from problem
 

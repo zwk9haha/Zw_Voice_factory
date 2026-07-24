@@ -1,6 +1,6 @@
-import { ArrowRight, Check, CircleAlert, FileText, LoaderCircle, Lock, Mic2, Play, Plus, RefreshCw, RotateCcw, Save, SlidersHorizontal, Upload, Users } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, FileText, LoaderCircle, Lock, Mic2, Play, Plus, RefreshCw, RotateCcw, Save, SlidersHorizontal, Unlock, Upload, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { createAudioJob, fetchAudioJob, fetchPreparationPreview, fetchSources, importTxtSource, runPreparationAction, updateReferenceSelection, updateReferenceThreshold, updateReferenceVoicePrompt } from "./api";
+import { createAudioJob, fetchAudioJob, fetchPreparationPreview, fetchSources, importTxtSource, runPreparationAction, updateAutomaticReferenceLock, updateReferenceSelection, updateReferenceThreshold, updateReferenceVoicePrompt } from "./api";
 import type {
   AudioJob,
   PreparationAction,
@@ -264,6 +264,20 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
     }
   }
 
+  async function toggleAutomaticReferenceLock(): Promise<void> {
+    if (!selectedProjectId || !preview?.reference_plan) return;
+    const nextLocked = !preview.reference_plan.automatic_items_locked;
+    setBusy("reference_lock");
+    try {
+      setPreview(await updateAutomaticReferenceLock(selectedProjectId, nextLocked));
+      setFeedback(nextLocked ? "权重达标角色已锁定当前选择" : "权重达标角色已解锁，可以单独切换");
+    } catch (error) {
+      setFeedback(errorMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function saveVoicePrompt(): Promise<void> {
     if (!selectedProjectId || !selectedReference) return;
     const prompt = voicePromptDraft.trim();
@@ -407,9 +421,9 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
           {activeStage === "casting" && referenceItems.map((item, index) => (
             <div key={item.reference_id} className={`reference-cast-row ${index === selectedIndex ? "selected" : ""}`}>
               <button className="reference-character-select" onClick={() => setSelectedIndex(index)}>
-                <Users size={16} /><span><strong>{item.display_name}</strong><small>{genderLabel[item.gender]} · 权重 {Math.round(item.importance * 100)}%</small></span><em>{item.selection_mode === "automatic" ? "自动" : item.selection_mode === "narrator_default" ? "默认" : item.selected ? "已选择" : "复用旁白"}</em>
+                <Users size={16} /><span><strong>{item.display_name}</strong><small>{genderLabel[item.gender]} · 权重 {Math.round(item.importance * 100)}%</small></span><em>{item.selection_mode === "automatic" ? item.selected ? "自动已选" : "自动未选" : item.selection_mode === "narrator_default" ? "默认" : item.selected ? "已选择" : "复用旁白"}</em>
               </button>
-              <button className={`reference-select-toggle ${item.selected ? "active" : ""}`} title={item.locked ? "达到权重阈值，已自动加入生成" : item.selected ? "取消独立参考，改用旁白" : "加入 VoxCPM2 参考生成"} disabled={isBusy || item.locked} onClick={() => void toggleReference(item)}>
+              <button className={`reference-select-toggle ${item.selected ? "active" : ""}`} title={item.selection_mode === "narrator_default" ? "默认旁白始终生成" : item.locked ? "权重达标角色当前已锁定" : item.selected ? "取消独立参考，改用旁白" : "加入 VoxCPM2 参考生成"} disabled={isBusy || item.locked} onClick={() => void toggleReference(item)}>
                 {item.locked ? <Lock size={13} /> : item.selected ? <Check size={14} /> : <Plus size={14} />}
               </button>
             </div>
@@ -453,6 +467,7 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
             <div><span>自动生成权重阈值</span><strong>{thresholdPercent}% 及以上</strong></div>
             <input type="range" min="1" max="100" step="1" value={thresholdPercent} aria-label="自动生成权重阈值" disabled={isBusy} onChange={(event) => setThresholdPercent(Number(event.target.value))} onPointerUp={() => void saveReferenceThreshold()} onKeyUp={() => void saveReferenceThreshold()} />
             <button className="icon-button" title="应用权重阈值" disabled={isBusy || Math.abs(thresholdPercent / 100 - preview.reference_plan.automatic_threshold) < 0.0001} onClick={() => void saveReferenceThreshold()}><Save size={14} /></button>
+            <button className={`secondary-button threshold-lock-button ${preview.reference_plan.automatic_items_locked ? "" : "active"}`} disabled={isBusy} onClick={() => void toggleAutomaticReferenceLock()}>{preview.reference_plan.automatic_items_locked ? <Unlock size={14} /> : <Lock size={14} />}{preview.reference_plan.automatic_items_locked ? "解锁选择" : "锁定选择"}</button>
           </div>
         )}
         <div className="operation-feedback" role="status">{isBusy && <LoaderCircle className="spin" size={14} />}{feedback}</div>

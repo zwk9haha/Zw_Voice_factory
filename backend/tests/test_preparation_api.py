@@ -224,6 +224,50 @@ def test_reference_voice_prompt_updates_the_reference_and_character_bible(tmp_pa
     assert updated_character["voice_prompt"] == updated_reference["voice_prompt"]
 
 
+def test_automatic_reference_can_be_toggled_after_the_selection_lock_is_disabled(tmp_path: Path) -> None:
+    imported = import_source(tmp_path, "第一章 初见\n萧炎说道：\"开始吧。\"".encode())
+    project_id = str(imported["project_id"])
+    run_action(tmp_path, project_id, "analyze")
+    extracted = run_action(tmp_path, project_id, "extract_characters").json()
+    reference = next(
+        item for item in extracted["reference_plan"]["items"]
+        if item["display_name"] == "萧炎"
+    )
+    assert extracted["reference_plan"]["automatic_items_locked"] is True
+    assert reference["locked"] is True
+
+    unlocked = asyncio.run(
+        request(
+            tmp_path,
+            "PATCH",
+            f"/api/projects/{project_id}/reference-settings",
+            json={"automatic_items_locked": False},
+        )
+    )
+
+    assert unlocked.status_code == 200
+    unlocked_items = unlocked.json()["reference_plan"]["items"]
+    unlocked_reference = next(item for item in unlocked_items if item["reference_id"] == reference["reference_id"])
+    assert unlocked_reference["locked"] is False
+    assert all(item["locked"] is True for item in unlocked_items if item["selection_mode"] == "narrator_default")
+
+    deselected = asyncio.run(
+        request(
+            tmp_path,
+            "PATCH",
+            f"/api/projects/{project_id}/references/{reference['reference_id']}",
+            json={"selected": False},
+        )
+    )
+    assert deselected.status_code == 200
+    updated = next(
+        item for item in deselected.json()["reference_plan"]["items"]
+        if item["reference_id"] == reference["reference_id"]
+    )
+    assert updated["selection_mode"] == "automatic"
+    assert updated["selected"] is False
+
+
 def test_character_extraction_does_not_turn_speech_modifiers_into_names(tmp_path: Path) -> None:
     text = (
         "第一章 初见\n"
