@@ -228,8 +228,12 @@ a.icon-button { color: inherit; text-decoration: none; }
 .casting-threshold-control > div { min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .casting-threshold-control span { color: #8b8f9c; font-size: 10px; }
 .casting-threshold-control strong { color: #d8dae1; font-size: 11px; font-weight: 600; white-space: nowrap; }
-.casting-threshold-control input[type="range"] { width: 100%; height: 18px; margin: 0; accent-color: #a981d4; cursor: pointer; }
+.casting-threshold-control input[type="range"] { width: 100%; height: 8px; margin: 0; border: 1px solid #d2dfe1; border-radius: 999px; appearance: none; accent-color: #0f9f92; cursor: pointer; }
 .casting-threshold-control input[type="range"]:disabled { cursor: not-allowed; }
+.casting-threshold-control input[type="range"]::-webkit-slider-runnable-track { height: 8px; border-radius: 999px; background: transparent; }
+.casting-threshold-control input[type="range"]::-moz-range-track { height: 8px; border-radius: 999px; background: transparent; }
+.casting-threshold-control input[type="range"]::-webkit-slider-thumb { width: 16px; height: 16px; margin-top: -5px; border: 2px solid #ffffff; border-radius: 50%; appearance: none; background: #0f9f92; box-shadow: 0 1px 4px rgb(15 159 146 / 35%); }
+.casting-threshold-control input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: 2px solid #ffffff; border-radius: 50%; background: #0f9f92; box-shadow: 0 1px 4px rgb(15 159 146 / 35%); }
 .threshold-lock-button { min-width: 106px; }
 .threshold-lock-button.active { border-color: #4f8b81; color: #63bcae; background: #1b3732; }
 .operation-feedback { min-height: 34px; display: flex; align-items: center; gap: 7px; padding: 8px 18px; color: #8fcfc3; background: #101116; font-size: 10px; }
@@ -497,6 +501,16 @@ a.icon-button { color: inherit; text-decoration: none; }
 :root[data-theme="light"] .workflow-nav button.complete .stage-index { border-color: #8bc9c1; color: #087a70; background: var(--light-teal-soft); }
 :root[data-theme="light"] .workflow-nav button.active .stage-index { border-color: #79bbb3; color: #087a70; background: #cde8e4; }
 :root[data-theme="light"] .job-progress > small { color: #3f565d; }
+:root[data-theme="light"] .model-role-head,
+:root[data-theme="light"] .script-table-head { background: #f7fbfb; color: var(--light-muted); }
+:root[data-theme="light"] .model-role-table > div:not(.model-role-head) { background: #edf4f4; }
+:root[data-theme="light"] .casting-threshold-control input[type="range"],
+:root[data-theme="light"] .job-progress,
+:root[data-theme="light"] .timeline-track,
+:root[data-theme="light"] .resource-metric > i { border-color: #d2dfe1; background-color: #ffffff; }
+:root[data-theme="light"] .job-progress > span,
+:root[data-theme="light"] .timeline-track span,
+:root[data-theme="light"] .resource-metric > i > span { background: var(--light-teal); }
 
 @media (max-width: 1180px) {
   .route-context { grid-template-columns: minmax(210px, 260px) minmax(380px, 1fr) 195px; }

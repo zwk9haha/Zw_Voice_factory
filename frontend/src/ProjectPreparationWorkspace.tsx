@@ -465,7 +465,7 @@ export function ProjectPreparationWorkspace({ activeStage, onStageChange }: Proj
         {activeStage === "casting" && preview?.reference_plan && (
           <div className="casting-threshold-control">
             <div><span>自动生成权重阈值</span><strong>{thresholdPercent}% 及以上</strong></div>
-            <input type="range" min="1" max="100" step="1" value={thresholdPercent} aria-label="自动生成权重阈值" disabled={isBusy} onChange={(event) => setThresholdPercent(Number(event.target.value))} onPointerUp={() => void saveReferenceThreshold()} onKeyUp={() => void saveReferenceThreshold()} />
+            <input type="range" min="1" max="100" step="1" value={thresholdPercent} aria-label="自动生成权重阈值" disabled={isBusy} style={{ background: `linear-gradient(to right, #0f9f92 0%, #0f9f92 ${thresholdPercent}%, #ffffff ${thresholdPercent}%, #ffffff 100%)` }} onChange={(event) => setThresholdPercent(Number(event.target.value))} onPointerUp={() => void saveReferenceThreshold()} onKeyUp={() => void saveReferenceThreshold()} />
             <button className="icon-button" title="应用权重阈值" disabled={isBusy || Math.abs(thresholdPercent / 100 - preview.reference_plan.automatic_threshold) < 0.0001} onClick={() => void saveReferenceThreshold()}><Save size={14} /></button>
             <button className={`secondary-button threshold-lock-button ${preview.reference_plan.automatic_items_locked ? "" : "active"}`} disabled={isBusy} onClick={() => void toggleAutomaticReferenceLock()}>{preview.reference_plan.automatic_items_locked ? <Unlock size={14} /> : <Lock size={14} />}{preview.reference_plan.automatic_items_locked ? "解锁选择" : "锁定选择"}</button>
           </div>
