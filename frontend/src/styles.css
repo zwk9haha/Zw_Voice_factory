@@ -504,6 +504,9 @@ a.icon-button { color: inherit; text-decoration: none; }
 :root[data-theme="light"] .model-role-head,
 :root[data-theme="light"] .script-table-head { background: #f7fbfb; color: var(--light-muted); }
 :root[data-theme="light"] .model-role-table > div:not(.model-role-head) { background: #edf4f4; }
+:root[data-theme="light"] .script-heading,
+:root[data-theme="light"] .preparation-actions { background: var(--light-surface); }
+:root[data-theme="light"] .script-row:hover { background: #e1efed; }
 :root[data-theme="light"] .casting-threshold-control input[type="range"],
 :root[data-theme="light"] .job-progress,
 :root[data-theme="light"] .timeline-track,
