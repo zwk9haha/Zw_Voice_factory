@@ -14,6 +14,24 @@ Zw Voice Factory 是一个面向长篇小说的本地多角色配音工作台：
 - RVC 异步训练、训练进度、日志、试听对比，以及启动器统一管理的进程生命周期。
 - 图形启动器、模型下载队列、断点续传、来源故障转移、SHA-256 校验和安全压缩包解压。
 
+## 实测流程
+
+小文本使用 `input/斗破苍穹测试.txt` 验证完整链路：文件约 64.5 KB，正文 33,623 字、11 章；从项目创建、文本分析、角色审核、参考音频、导演文件到质量渲染均通过，导演文件包含 883 句。首个质量渲染切片使用 GPT-SoVITS V2，实际生成的试听任务均完成，并记录节目级响度校正指标。
+
+![质量渲染工作台](docs/screenshots/07-small-quality-ready.webp)
+
+![质量音频生成完成](docs/screenshots/10-small-audio-complete.webp)
+
+长文本使用 `input/斗破苍穹天蚕土豆.txt` 验证流式切片：文件约 10.1 MB，正文 5,472,278 字、1,646 章；设置为每 50 章一批后生成 33 个切片。第 1 切片（第 1 至 50 章）先进入质量渲染，第 2 至第 9 切片继续在后台准备参考音频；首切片随后完成 3 个真实质量音频试听任务，后续切片保持可追踪的处理状态。
+
+![长文本切片队列](docs/screenshots/12-long-form-prefetch-queue.webp)
+
+![长文本首切片进入质量渲染](docs/screenshots/13-long-form-first-slice-quality.webp)
+
+![长文本首切片试听完成](docs/screenshots/15-long-form-audio-complete.webp)
+
+这组截图只展示脱敏后的本地测试状态；小说原文、模型、音频和运行缓存均被 `.gitignore` 排除，不会随仓库发布。
+
 ## 技术栈
 
 | 层 | 技术 |

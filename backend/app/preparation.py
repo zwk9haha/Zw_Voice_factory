@@ -966,9 +966,20 @@ class PreparationService:
                 json.dumps(payload, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            temporary.replace(path)
+            PreparationService._replace_with_retry(temporary, path)
         finally:
             temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _replace_with_retry(temporary: Path, target: Path) -> None:
+        for attempt in range(6):
+            try:
+                temporary.replace(target)
+                return
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
 
     def _snapshot_revision(self, project_id: str, revision_id: str) -> None:
         target_dir = self._revision_dir(project_id, revision_id)

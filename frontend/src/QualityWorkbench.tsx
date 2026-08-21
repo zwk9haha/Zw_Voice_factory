@@ -135,6 +135,7 @@ export function QualityWorkbench({ qualityModel, qualityModelLabel, sources, sel
   const [referenceBusy, setReferenceBusy] = useState(false);
   const [mergedAudio, setMergedAudio] = useState<MergedAudio | null>(null);
   const [renderOptions, setRenderOptions] = useState<QualityRenderOptions>(DEFAULT_QUALITY_RENDER_OPTIONS);
+  const selectionManuallyEditedRef = useRef(false);
   const [loudnessPolicy, setLoudnessPolicy] = useState<ProgramLoudnessPolicy>(DEFAULT_PROGRAM_LOUDNESS_POLICY);
   const [productionSettings, setProductionSettings] = useState<ProductionSettings | null>(null);
   const [selectedCacheJobIds, setSelectedCacheJobIds] = useState<Set<string>>(new Set());
@@ -382,6 +383,7 @@ export function QualityWorkbench({ qualityModel, qualityModelLabel, sources, sel
       setJobs(restoredJobs);
       setRvcWorkspace(nextRvcWorkspace);
       setSelectedCacheJobIds(new Set());
+      selectionManuallyEditedRef.current = false;
       setSelectedSegmentIds(new Set(nextPreview.director_doc?.segments.map((segment) => segment.segment_id) ?? []));
       setChapterIndex(0);
       setMergedAudio(null);
@@ -415,6 +417,7 @@ export function QualityWorkbench({ qualityModel, qualityModelLabel, sources, sel
           return nextCount >= currentCount ? nextPreview : current;
         });
         setSelectedSegmentIds((current) => {
+          if (selectionManuallyEditedRef.current) return current;
           const next = new Set(current);
           nextPreview.director_doc?.segments.forEach((segment) => next.add(segment.segment_id));
           return next;
@@ -1335,8 +1338,7 @@ export function QualityWorkbench({ qualityModel, qualityModelLabel, sources, sel
   const activeReferenceUrl = referenceAudioUrl(activeReference);
   const activeReferenceJob = activeReference ? referenceJobs.get(activeReference.reference_id) : undefined;
   const activeEmotionItems = (preview?.emotion_plan?.items ?? []).filter((item) => item.parent_reference_id === activeReference?.reference_id && item.selected);
-  const visibleSelectedCount = visibleSegments.filter((segment) => selectedSegmentIds.has(segment.segment_id)).length;
-  const allVisibleSelected = visibleSegments.length > 0 && visibleSelectedCount === visibleSegments.length;
+  const allSegmentsSelected = segments.length > 0 && segments.every((segment) => selectedSegmentIds.has(segment.segment_id));
   const allCacheSelected = completedCacheJobs.length > 0 && completedCacheJobs.every((job) => selectedCacheJobIds.has(job.job_id));
 
   return (
@@ -1431,7 +1433,7 @@ export function QualityWorkbench({ qualityModel, qualityModelLabel, sources, sel
           <button className="icon-button" title="下一章" disabled={chapterIndex + 1 >= chapters.length} onClick={() => setChapterIndex((current) => Math.min(Math.max(0, chapters.length - 1), current + 1))}><ChevronRight size={15} /></button>
         </div>
         <div className="script-table-head quality-script-grid">
-          <label><input type="checkbox" checked={allVisibleSelected} onChange={(event) => setSelectedSegmentIds((current) => { const next = new Set(current); visibleSegments.forEach((segment) => event.target.checked ? next.add(segment.segment_id) : next.delete(segment.segment_id)); return next; })} /><span>选择</span></label>
+          <label><input type="checkbox" checked={allSegmentsSelected} onChange={(event) => { selectionManuallyEditedRef.current = true; setSelectedSegmentIds((current) => { const next = new Set(current); segments.forEach((segment) => event.target.checked ? next.add(segment.segment_id) : next.delete(segment.segment_id)); return next; }); }} /><span>选择</span></label>
           <span>角色 / 表演</span><span>文本</span><span>状态</span>
         </div>
         <div className="script-list">
@@ -1466,7 +1468,7 @@ export function QualityWorkbench({ qualityModel, qualityModelLabel, sources, sel
                   void startStreamingFrom(absoluteIndex, "restart");
                 }}
               >
-                <input type="checkbox" aria-label={`选择第 ${absoluteIndex + 1} 句`} checked={selectedSegmentIds.has(segment.segment_id)} onChange={(event) => setSelectedSegmentIds((current) => { const next = new Set(current); event.target.checked ? next.add(segment.segment_id) : next.delete(segment.segment_id); return next; })} />
+                <input type="checkbox" aria-label={`选择第 ${absoluteIndex + 1} 句`} checked={selectedSegmentIds.has(segment.segment_id)} onChange={(event) => { selectionManuallyEditedRef.current = true; setSelectedSegmentIds((current) => { const next = new Set(current); event.target.checked ? next.add(segment.segment_id) : next.delete(segment.segment_id); return next; }); }} />
                 <div className="segment-meta quality-segment-meta"><span className={`cast-dot cast-dot--${reference?.color ?? "teal"}`} /><select aria-label={`第 ${absoluteIndex + 1} 句角色声线`} value={segment.voice_reference_id ?? ""} disabled={Boolean(streamView) || isPending(job) || segmentVoiceBusy === segment.segment_id} title={speaker} onChange={(event) => void saveSegmentVoice(segment, event.target.value || null)}><option value="">{automaticVoiceLabel(segment, reference)}</option>{availableVoiceReferences.map((item) => <option key={item.reference_id} value={item.reference_id}>{item.display_name}</option>)}</select><span className="emotion-chip">{segment.direction.emotion}</span></div>
                 <div className="segment-text"><span className="line-number">{String(absoluteIndex + 1).padStart(3, "0")}</span><p>{segment.text}</p></div>
                 <button

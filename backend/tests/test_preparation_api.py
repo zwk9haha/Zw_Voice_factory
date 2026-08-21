@@ -6,6 +6,7 @@ import time
 import wave
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 
@@ -28,6 +29,25 @@ from app.voice_analysis import (
     VoiceAnalysisError,
     VoiceAnalysisStatus,
 )
+
+
+def test_atomic_json_write_retries_transient_permission_error(tmp_path: Path) -> None:
+    path = tmp_path / "project.json"
+    original_replace = Path.replace
+    calls = 0
+
+    def flaky_replace(source: Path, target: Path) -> Path:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise PermissionError(13, "sharing violation")
+        return original_replace(source, target)
+
+    with patch.object(Path, "replace", flaky_replace):
+        PreparationService._write_json_file(path, {"status": "ok"})
+
+    assert calls == 3
+    assert json.loads(path.read_text(encoding="utf-8")) == {"status": "ok"}
 
 
 class RegeneratingVoiceAnalyzer:
