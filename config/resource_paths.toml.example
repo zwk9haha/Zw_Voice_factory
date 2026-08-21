@@ -1,30 +1,30 @@
 [workspace]
-root = "G:/Desktop/Zw_Voice_factory"
-input = "G:/Desktop/Zw_Voice_factory/input"
-outputs = "G:/Desktop/Zw_Voice_factory/outputs"
+root = "."
+input = "./input"
+outputs = "./outputs"
 
 [tts.voxcpm2]
-model = "G:/Desktop/Zw_Voice_factory/models/tts/voxcpm2"
-tool = "G:/Desktop/Zw_Voice_factory/models/tts_tools/voxcpm2"
+model = "./models/tts/voxcpm2"
+tool = "./models/tts_tools/voxcpm2"
 
 [tts.indextts2]
-model = "G:/Desktop/Zw_Voice_factory/models/tts/IndexTeam--IndexTTS-2"
-tool = "G:/Desktop/Zw_Voice_factory/models/tts_tools/indextts2"
+model = "./models/tts/IndexTeam--IndexTTS-2"
+tool = "./models/tts_tools/indextts2"
 
 [tts.gpt_sovits]
-tool = "G:/Desktop/Zw_Voice_factory/models/tts_tools/gpt_sovits"
+tool = "./models/tts_tools/gpt_sovits"
 
 [tts.emotivoice]
-model = "G:/Desktop/Zw_Voice_factory/models/tts/emotivoice"
-tool = "G:/Desktop/Zw_Voice_factory/models/tts_tools/emotivoice"
+model = "./models/tts/emotivoice"
+tool = "./models/tts_tools/emotivoice"
 
 [tts.kokoro]
-model = "G:/Desktop/Zw_Voice_factory/models/tts/hexgrad--Kokoro-82M-v1.1-zh"
-tool = "G:/Desktop/Zw_Voice_factory/models/tts_tools/kokoro"
+model = "./models/tts/hexgrad--Kokoro-82M-v1.1-zh"
+tool = "./models/tts_tools/kokoro"
 
 [vc.rvc]
-tool = "G:/Desktop/Zw_Voice_factory/models/vc_tools/rvc-webui"
-models = "G:/Desktop/Zw_Voice_factory/assets/rvc_models"
+tool = "./models/vc_tools/rvc-webui"
+models = "./assets/rvc_models"
 
 [references]
-library = "G:/Desktop/Zw_Voice_factory/assets/voice_samples"
+library = "./assets/voice_samples"

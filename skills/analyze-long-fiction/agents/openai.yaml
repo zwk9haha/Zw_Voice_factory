@@ -1,0 +1,4 @@
+interface:
+  display_name: "长篇小说分析"
+  short_description: "面向超长小说的章节切分、局部角色权重合并与批次流水分析规范"
+  default_prompt: "Use $analyze-long-fiction to split this novel into efficient analysis batches without losing locally important characters."

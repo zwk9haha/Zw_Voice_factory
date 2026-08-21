@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "gender": {
+    "male": "男性",
+    "female": "女性",
+    "unknown": "性别不限定"
+  },
+  "age_ranges": {
+    "child": "儿童",
+    "teen": "少年",
+    "young_adult": "青年",
+    "adult": "成年",
+    "middle_aged": "中年",
+    "senior": "老年",
+    "unknown": "年龄不确定"
+  },
+  "personality_tags": {
+    "calm": "沉着",
+    "restrained": "克制",
+    "decisive": "果断",
+    "gentle": "温和",
+    "aloof": "疏离",
+    "proud": "骄傲",
+    "lively": "活泼",
+    "innocent": "天真",
+    "stern": "冷峻",
+    "authoritative": "威严",
+    "cunning": "狡黠",
+    "sincere": "诚恳",
+    "sensitive": "敏锐",
+    "steady": "稳重",
+    "rebellious": "桀骜",
+    "reserved": "内敛"
+  },
+  "dimensions": {
+    "pitch": {
+      "low": "低音区",
+      "mid_low": "中低音区",
+      "mid": "中音区",
+      "mid_high": "中高音区",
+      "high": "高音区"
+    },
+    "weight": {
+      "light": "轻量",
+      "medium": "适中",
+      "full": "饱满",
+      "heavy": "厚重"
+    },
+    "brightness": {
+      "dark": "偏暗",
+      "neutral": "均衡",
+      "bright": "偏亮"
+    },
+    "texture": {
+      "clean": "干净",
+      "smooth": "顺滑",
+      "warm": "温润",
+      "cool": "冷冽",
+      "clear": "清亮",
+      "mellow": "醇厚",
+      "grainy": "颗粒感",
+      "husky": "轻微沙哑",
+      "airy": "轻气声",
+      "metallic": "轻金属感",
+      "transparent": "通透"
+    },
+    "resonance": {
+      "chest": "胸腔共鸣",
+      "oral": "口腔共鸣",
+      "head": "头腔共鸣",
+      "nasal_light": "轻鼻腔共鸣",
+      "mixed": "混合共鸣"
+    },
+    "articulation": {
+      "crisp": "咬字利落",
+      "natural": "自然口语咬字",
+      "soft": "咬字柔和",
+      "measured": "吐字审慎",
+      "relaxed": "吐字松弛"
+    },
+    "breath": {
+      "restrained": "气息内收",
+      "balanced": "气息平稳",
+      "audible": "呼吸感明显",
+      "supported": "气息支撑扎实"
+    },
+    "pace": {
+      "deliberate": "语速偏缓",
+      "steady": "语速平稳",
+      "agile": "语速轻快",
+      "brisk": "语速偏快"
+    },
+    "rhythm": {
+      "even": "节奏均匀",
+      "compact": "节奏紧凑",
+      "spacious": "停连舒展",
+      "punctuated": "停连分明",
+      "variable": "节奏有弹性"
+    },
+    "dynamics": {
+      "restrained": "动态克制",
+      "balanced": "动态自然",
+      "expressive": "动态鲜明",
+      "commanding": "动态有压迫感"
+    },
+    "baseline": {
+      "neutral": "中性自然",
+      "composed": "从容克制",
+      "warm": "温和亲近",
+      "distant": "冷淡疏离",
+      "alert": "警觉敏锐",
+      "confident": "自信坚定",
+      "playful": "轻快灵动",
+      "solemn": "庄重威严"
+    }
+  },
+  "constraints": {
+    "avoid_announcer_tone": "避免播音腔",
+    "avoid_excessive_depth": "避免刻意压低",
+    "avoid_excessive_brightness": "避免过度明亮",
+    "avoid_excessive_age": "避免年龄感过重",
+    "avoid_childishness": "避免幼态化",
+    "avoid_continuous_breathiness": "避免持续气声",
+    "avoid_emotional_overacting": "避免情绪外放过度",
+    "avoid_flat_delivery": "避免表达平直",
+    "preserve_natural_speech": "保持自然口语",
+    "preserve_clear_articulation": "保持吐字清楚",
+    "preserve_identity_neutral": "中性参考不携带场景情绪"
+  }
+}

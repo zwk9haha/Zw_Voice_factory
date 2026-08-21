@@ -1,0 +1,322 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "id": "ffmpeg-9.0.1-essentials",
+      "name": "FFmpeg 9.0.1 Essentials",
+      "category": "音频工具",
+      "description": "节目响度处理、音频拼接和格式转换所需的项目内 FFmpeg。",
+      "relative_target": "tools/ffmpeg",
+      "install_marker": "bin/ffmpeg.exe",
+      "size_bytes": 0,
+      "sha256": "FEC81AE03971D9DD4BE3EBE02E263BD2EC1D789483F931BDBA5F5715E65DA2E9",
+      "archive": "zip",
+      "strip_top_level": true,
+      "recommended": true,
+      "required": false,
+      "provider": "direct",
+      "docs_url": "https://ffmpeg.org/",
+      "sources": [
+        {
+          "label": "gyan.dev",
+          "url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.1-essentials_build.zip"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "gpt-sovits-runtime",
+      "name": "GPT-SoVITS 运行时",
+      "category": "质量路线",
+      "description": "质量路线的 GPT-SoVITS API 和模型运行环境。当前安装包由项目迁移脚本管理。",
+      "relative_target": "models/tts_tools/gpt_sovits",
+      "install_marker": "api_v2.py",
+      "size_bytes": 0,
+      "sha256": "",
+      "archive": "zip",
+      "strip_top_level": false,
+      "recommended": true,
+      "required": true,
+      "docs_url": "https://github.com/RVC-Boss/GPT-SoVITS",
+      "provider": "github_codeload",
+      "sources": [
+        {
+          "label": "GPT-SoVITS GitHub main",
+          "url": "https://github.com/RVC-Boss/GPT-SoVITS/archive/refs/heads/main.zip"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "gpt-sovits-v3-s1",
+      "name": "GSV V3 Text2Semantic 权重",
+      "category": "质量路线",
+      "description": "GPT-SoVITS V3/V4 共用的 Text2Semantic 基础权重。",
+      "relative_target": "models/tts_tools/gpt_sovits/GPT_SoVITS/pretrained_models/s1v3.ckpt",
+      "install_marker": "",
+      "size_bytes": 155284856,
+      "sha256": "87133414860EA14FF6620C483A3DB5ED07B44BE42E2C3FCDAD65523A729A745A",
+      "archive": "file",
+      "strip_top_level": false,
+      "recommended": true,
+      "required": true,
+      "provider": "huggingface",
+      "docs_url": "https://huggingface.co/lj1995/GPT-SoVITS",
+      "sources": [
+        {
+          "label": "GPT-SoVITS Hugging Face",
+          "url": "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/s1v3.ckpt?download=true"
+        }
+      ],
+      "dependencies": ["gpt-sovits-runtime"]
+    },
+    {
+      "id": "gpt-sovits-v4-sovits",
+      "name": "GSV V4 SoVITS 权重",
+      "category": "质量路线",
+      "description": "GPT-SoVITS V4 的 48 kHz SoVITS 权重。",
+      "relative_target": "models/tts_tools/gpt_sovits/GPT_SoVITS/pretrained_models/gsv-v4-pretrained/s2Gv4.pth",
+      "install_marker": "",
+      "size_bytes": 769025545,
+      "sha256": "906FE22F48C3E037A389DF291D4D32A9414E15DBB8F9628643E83AACED109EA4",
+      "archive": "file",
+      "strip_top_level": false,
+      "recommended": true,
+      "required": true,
+      "provider": "huggingface",
+      "docs_url": "https://huggingface.co/lj1995/GPT-SoVITS",
+      "sources": [
+        {
+          "label": "GPT-SoVITS Hugging Face",
+          "url": "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/gsv-v4-pretrained/s2Gv4.pth?download=true"
+        }
+      ],
+      "dependencies": ["gpt-sovits-v3-s1"]
+    },
+    {
+      "id": "gpt-sovits-v4-vocoder",
+      "name": "GSV V4 Vocoder 权重",
+      "category": "质量路线",
+      "description": "GPT-SoVITS V4 的 48 kHz Vocoder 权重。",
+      "relative_target": "models/tts_tools/gpt_sovits/GPT_SoVITS/pretrained_models/gsv-v4-pretrained/vocoder.pth",
+      "install_marker": "",
+      "size_bytes": 57781109,
+      "sha256": "4D611913DF7B12D49E8976C944558D2D096816365EDFC6C35A9E85B67DD14ED9",
+      "archive": "file",
+      "strip_top_level": false,
+      "recommended": true,
+      "required": true,
+      "provider": "huggingface",
+      "docs_url": "https://huggingface.co/lj1995/GPT-SoVITS",
+      "sources": [
+        {
+          "label": "GPT-SoVITS Hugging Face",
+          "url": "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/gsv-v4-pretrained/vocoder.pth?download=true"
+        }
+      ],
+      "dependencies": ["gpt-sovits-v4-sovits"]
+    },
+    {
+      "id": "gpt-sovits-v2proplus-sovits",
+      "name": "GSV V2 Pro Plus SoVITS 权重",
+      "category": "质量路线",
+      "description": "GPT-SoVITS V2 Pro Plus 的 SoVITS 权重。",
+      "relative_target": "models/tts_tools/gpt_sovits/GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth",
+      "install_marker": "",
+      "size_bytes": 200125741,
+      "sha256": "D42A22BBBF65FB2BBDD45AD6A66841156977DB45C7AABE0A6992FF378D9C7D3B",
+      "archive": "file",
+      "strip_top_level": false,
+      "recommended": true,
+      "required": false,
+      "provider": "huggingface",
+      "docs_url": "https://huggingface.co/lj1995/GPT-SoVITS",
+      "sources": [
+        {
+          "label": "GPT-SoVITS Hugging Face",
+          "url": "https://huggingface.co/lj1995/GPT-SoVITS/resolve/main/v2Pro/s2Gv2ProPlus.pth?download=true"
+        }
+      ],
+      "dependencies": ["gpt-sovits-v3-s1"]
+    },
+    {
+      "id": "voxcpm2-runtime",
+      "name": "VoxCPM2 主模型权重",
+      "category": "参考音频",
+      "description": "角色标准参考、情绪派生和 RVC 训练素材生成。",
+      "relative_target": "models/tts/voxcpm2/model.safetensors",
+      "install_marker": "",
+      "size_bytes": 4580080592,
+      "sha256": "F7F964CFA9DA23653BAEC6E6F7750719977AD944ED9F95FE52FE3A620506891D",
+      "archive": "file",
+      "strip_top_level": false,
+      "recommended": true,
+      "required": false,
+      "provider": "huggingface",
+      "docs_url": "https://github.com/OpenBMB/VoxCPM",
+      "sources": [
+        {
+          "label": "VoxCPM2 Hugging Face",
+          "url": "https://huggingface.co/openbmb/VoxCPM2/resolve/main/model.safetensors?download=true"
+        }
+      ],
+      "dependencies": ["voxcpm2-tool", "voxcpm2-audiovae"]
+    },
+    {
+      "id": "voxcpm2-audiovae",
+      "name": "VoxCPM2 AudioVAE",
+      "category": "参考音频",
+      "description": "VoxCPM2 语音生成所需的 AudioVAE 权重。",
+      "relative_target": "models/tts/voxcpm2/audiovae.pth",
+      "install_marker": "",
+      "size_bytes": 376951122,
+      "sha256": "94B5D51E107E0507D4ACC976CFDADB64EDD6FD06D1F751DADBF2FD1594274BF1",
+      "archive": "file",
+      "strip_top_level": false,
+      "recommended": true,
+      "required": true,
+      "provider": "huggingface",
+      "docs_url": "https://github.com/OpenBMB/VoxCPM",
+      "sources": [
+        {
+          "label": "VoxCPM2 Hugging Face",
+          "url": "https://huggingface.co/openbmb/VoxCPM2/resolve/main/audiovae.pth?download=true"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "voxcpm2-tool",
+      "name": "VoxCPM2 工具环境",
+      "category": "参考音频",
+      "description": "VoxCPM2 的项目内推理 Worker 依赖。",
+      "relative_target": "models/tts_tools/voxcpm2",
+      "install_marker": "pyproject.toml",
+      "size_bytes": 0,
+      "sha256": "",
+      "archive": "zip",
+      "strip_top_level": false,
+      "recommended": true,
+      "required": false,
+      "docs_url": "https://github.com/OpenBMB/VoxCPM",
+      "provider": "github_codeload",
+      "sources": [
+        {
+          "label": "VoxCPM GitHub main",
+          "url": "https://github.com/OpenBMB/VoxCPM/archive/refs/heads/main.zip"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "indextts2-runtime",
+      "name": "IndexTTS2 GPT 权重",
+      "category": "质量路线",
+      "description": "高表现力语音渲染和自然语言情绪控制。",
+      "relative_target": "models/tts/IndexTeam--IndexTTS-2/gpt.pth",
+      "install_marker": "",
+      "size_bytes": 3484663079,
+      "sha256": "BAAAEB8B56328DA81731DC540A85A7DEE32ECA9DA28F174B05757CB651C602A4",
+      "archive": "file",
+      "strip_top_level": false,
+      "recommended": false,
+      "required": false,
+      "provider": "huggingface",
+      "docs_url": "https://github.com/index-tts/index-tts",
+      "sources": [
+        {
+          "label": "IndexTTS-2 Hugging Face",
+          "url": "https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/gpt.pth?download=true"
+        }
+      ],
+      "dependencies": ["indextts2-tool", "indextts2-s2mel"]
+    },
+    {
+      "id": "indextts2-s2mel",
+      "name": "IndexTTS2 S2Mel 权重",
+      "category": "质量路线",
+      "description": "IndexTTS2 声学解码权重。",
+      "relative_target": "models/tts/IndexTeam--IndexTTS-2/s2mel.pth",
+      "install_marker": "",
+      "size_bytes": 1202198223,
+      "sha256": "AAE1BB12017CBB47E7A5CE537FC82F40B6B1DEB71ACDB9B8F25686F32714B636",
+      "archive": "file",
+      "strip_top_level": false,
+      "recommended": false,
+      "required": true,
+      "provider": "huggingface",
+      "docs_url": "https://github.com/index-tts/index-tts",
+      "sources": [
+        {
+          "label": "IndexTTS-2 Hugging Face",
+          "url": "https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/s2mel.pth?download=true"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "indextts2-tool",
+      "name": "IndexTTS2 工具环境",
+      "category": "质量路线",
+      "description": "IndexTTS2 的项目内推理 Worker 依赖。",
+      "relative_target": "models/tts_tools/indextts2",
+      "install_marker": "pyproject.toml",
+      "size_bytes": 0,
+      "sha256": "",
+      "archive": "zip",
+      "strip_top_level": false,
+      "recommended": false,
+      "required": false,
+      "docs_url": "https://github.com/index-tts/index-tts",
+      "provider": "github_codeload",
+      "sources": [
+        {
+          "label": "IndexTTS GitHub main",
+          "url": "https://github.com/index-tts/index-tts/archive/refs/heads/main.zip"
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "fast-tts-runtime",
+      "name": "极速路线轻量 TTS",
+      "category": "极速路线",
+      "description": "轻量 TTS 基础发声，配合 RVC Identity Layer 使用。",
+      "relative_target": "models/tts/sherpa-onnx",
+      "install_marker": "",
+      "size_bytes": 0,
+      "sha256": "",
+      "archive": "zip",
+      "strip_top_level": false,
+      "recommended": true,
+      "required": false,
+      "provider": "manual",
+      "docs_url": "https://github.com/k2-fsa/sherpa-onnx",
+      "sources": [],
+      "dependencies": []
+    },
+    {
+      "id": "rvc-runtime",
+      "name": "RVC 训练工具",
+      "category": "RVC",
+      "description": "极速路线身份层和质量路线稳定层的训练与推理工具。",
+      "relative_target": "models/vc_tools/rvc-webui",
+      "install_marker": "api_240604.py",
+      "size_bytes": 0,
+      "sha256": "",
+      "archive": "zip",
+      "strip_top_level": false,
+      "recommended": false,
+      "required": false,
+      "docs_url": "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
+      "provider": "github_codeload",
+      "sources": [
+        {
+          "label": "RVC WebUI GitHub main",
+          "url": "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI/archive/refs/heads/main.zip"
+        }
+      ],
+      "dependencies": []
+    }
+  ]
+}

@@ -12,6 +12,16 @@ $Host.UI.RawUI.WindowTitle = 'Zw Voice Factory 中文启动器'
 $factoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $launcherPath = Join-Path $factoryRoot 'Start-ZwVoice.cmd'
 
+function Wait-ForMenuReturn {
+    while ($true) {
+        $answer = Read-Host '输入 q 后按回车键返回主菜单'
+        if ($answer.Trim().ToLowerInvariant() -eq 'q') {
+            return
+        }
+        Write-Host '请输入 q，再按回车键。' -ForegroundColor Yellow
+    }
+}
+
 if ($PauseAfterFailure) {
     $prompt = '启动失败。按回车键关闭此窗口'
     if ($NonInteractive) {
@@ -23,6 +33,7 @@ if ($PauseAfterFailure) {
 }
 
 while ($true) {
+    $operationExitCode = 0
     Clear-Host
     Write-Host '========================================================' -ForegroundColor DarkGray
     Write-Host '             Zw Voice Factory 2.0 中文启动器' -ForegroundColor Cyan
@@ -47,15 +58,31 @@ while ($true) {
     }
 
     switch ($choice) {
-        '1' { & $launcherPath own }
-        '2' { & $launcherPath status }
-        '3' { & $launcherPath stop }
-        '4' { & $launcherPath test }
+        '1' {
+            & $launcherPath own
+            $operationExitCode = $LASTEXITCODE
+        }
+        '2' {
+            & $launcherPath status
+            $operationExitCode = $LASTEXITCODE
+        }
+        '3' {
+            & $launcherPath stop
+            $operationExitCode = $LASTEXITCODE
+        }
+        '4' {
+            & $launcherPath test
+            $operationExitCode = $LASTEXITCODE
+        }
         default {
             Write-Host '输入无效，请选择 0、1、2、3 或 4。' -ForegroundColor Yellow
+            $operationExitCode = 1
         }
     }
 
+    if ($NonInteractive) {
+        exit $operationExitCode
+    }
     Write-Host
-    [void](Read-Host '按回车键返回主菜单')
+    Wait-ForMenuReturn
 }

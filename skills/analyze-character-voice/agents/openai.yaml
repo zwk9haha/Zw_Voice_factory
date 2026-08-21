@@ -1,0 +1,4 @@
+interface:
+  display_name: "角色音色画像分析"
+  short_description: "提炼受控声学属性与角色专属表达习惯，生成可审核音色画像"
+  default_prompt: "使用 $analyze-character-voice 从角色文本证据中提炼有辨识度且可表演的音色画像。"

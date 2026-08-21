@@ -43,6 +43,7 @@ class QualityRouteConfiguration(BaseModel):
 class InferenceTemplate(BaseModel):
     template_id: str
     display_name: str
+    inference_mode: Literal["cloud", "hybrid", "local"]
     analysis_profile: Literal["balanced", "character_recall", "precision_first"]
     segmentation_profile: Literal["audiobook", "dialogue_dense", "long_form"]
     reference_text_profile: Literal["phoneme_coverage", "emotion_contrast"]
@@ -95,7 +96,11 @@ class CharacterVoice(BaseModel):
     age_range: str = "adult"
     personality_tags: list[str] = Field(default_factory=list)
     timbre_tags: list[str] = Field(default_factory=list)
+    delivery_tags: list[str] = Field(default_factory=list)
+    voice_constraints: list[str] = Field(default_factory=list)
     voice_prompt: str = ""
+    voice_profile_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    voice_profile_rationale: str = ""
     archetype_id: str | None = None
     evidence: list[CharacterEvidence] = Field(default_factory=list)
     canonical_reference_id: str | None = None
@@ -105,9 +110,11 @@ class CharacterVoice(BaseModel):
 
 
 class CharacterVoiceBible(BaseModel):
-    schema_version: int = 1
+    schema_version: int = 2
     project_id: str
     source_text: str
+    analysis_backend: Literal["local", "hybrid", "cloud", "rules"] = "rules"
+    analysis_model: str | None = None
     characters: list[CharacterVoice]
 
 
@@ -126,13 +133,20 @@ class DirectorSegment(BaseModel):
     segment_id: str
     chapter_id: str
     character_id: str
+    voice_reference_id: str | None = None
+    speaker_gender: Literal["male", "female", "unknown"] = "unknown"
+    speaker_kind: Literal["narration", "named", "extra", "unknown"] = "unknown"
+    analysis_batch_id: str | None = None
     text: str
     segment_type: Literal["narration", "dialogue"]
     direction: PerformanceDirection = Field(default_factory=PerformanceDirection)
 
 
 class DirectorDocument(BaseModel):
-    schema_version: int = 1
+    schema_version: int = 5
     project_id: str
     character_bible_id: str
+    analysis_backend: Literal["local", "hybrid", "cloud", "rules"] = "rules"
+    analysis_model: str | None = None
+    warnings: list[str] = Field(default_factory=list)
     segments: list[DirectorSegment]

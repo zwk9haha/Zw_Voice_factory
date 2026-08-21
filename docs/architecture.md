@@ -43,7 +43,7 @@ Rejected candidates remain in an analysis audit report with their source evidenc
 ```text
 director segment
   -> lightweight TTS speaker selected for gender/range/performance
-  -> warm RVC character model when assigned
+  -> approved RVC Identity Layer when assigned
   -> sentence cache
   -> playback queue
 ```
@@ -57,10 +57,18 @@ director segment
   -> emotion mapping
   -> approved emotion child or canonical fallback
   -> GPT-SoVITS
-  -> optional, benchmark-gated RVC stability layer
+  -> Base Render cache
+  -> optional, benchmark-approved RVC Stability Layer derivative
+  -> program loudness derivative
   -> sentence cache
   -> playback queue
 ```
+
+RVC model files are not production policy. A character-bound RVC Model Revision owns explicit model and index paths, training-set provenance, route-specific inference profiles, and approval state. Fast and Quality approval are independent.
+
+Each route benchmark snapshots the active Canonical Reference hash and inference-profile fingerprint. Changing either value revokes only that route approval and disables its character binding. Existing Base Render caches remain valid and can be reprocessed into a new RVC Derivative and Loudness Derivative without another TTS request.
+
+Continuous Production persists a Stability Preparation Policy separately from the main slice stage. The policy reuses current approved models first, waits for explicit Canonical Reference acceptance before creating a training set, limits automatic new candidates, and exposes per-character training, benchmark, and review progress without delaying render-ready slices. Provisional and reused references are never used to create a new character-bound quality-stability model.
 
 GPT-SoVITS does not receive free-form director emotion as a reliable native control. Emotion is expressed primarily through the selected reference variant, punctuation, segmentation, speed, and pause policy.
 

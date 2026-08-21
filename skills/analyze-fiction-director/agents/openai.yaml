@@ -1,0 +1,4 @@
+interface:
+  display_name: "小说导演分析"
+  short_description: "Resolve fiction dialogue speakers for director scripts"
+  default_prompt: "Use $analyze-fiction-director to turn this Chinese fiction excerpt into a speaker-accurate director script."

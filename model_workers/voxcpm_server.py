@@ -11,6 +11,8 @@ from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 from voxcpm import VoxCPM
 
+from runtime_log import install_runtime_tee
+
 
 class GenerateRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2_000)
@@ -78,10 +80,11 @@ def create_app(model_path: Path, device: str) -> FastAPI:
 
 def main() -> None:
     args = parse_args()
+    install_runtime_tee(Path(__file__).resolve().parents[1], "voxcpm2")
     if not args.model_path.is_dir():
         raise SystemExit(f"VoxCPM2 模型目录不存在: {args.model_path}")
     application = create_app(args.model_path, args.device)
-    uvicorn.run(application, host=args.host, port=args.port, workers=1, log_level="info")
+    uvicorn.run(application, host=args.host, port=args.port, workers=1, log_level="info", access_log=False)
 
 
 if __name__ == "__main__":
