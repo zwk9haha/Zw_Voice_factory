@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
@@ -443,6 +444,11 @@ internal sealed class ModelDownloadService
             File.Move(archivePath, targetPath, true);
             return;
         }
+        if (string.Equals(item.Archive, "7z", StringComparison.OrdinalIgnoreCase))
+        {
+            await InstallSevenZipArchiveAsync(item, archivePath, targetPath, cancellationToken).ConfigureAwait(false);
+            return;
+        }
         if (!string.Equals(item.Archive, "zip", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException($"暂不支持的模型压缩格式：{item.Archive}");
@@ -506,6 +512,115 @@ internal sealed class ModelDownloadService
         {
             CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)));
         }
+    }
+
+    private static async Task InstallSevenZipArchiveAsync(
+        ModelCatalogItem item,
+        string archivePath,
+        string targetPath,
+        CancellationToken cancellationToken)
+    {
+        var sevenZipPath = FindSevenZipPath();
+        if (sevenZipPath is null)
+        {
+            throw new InvalidOperationException("安装 7z 模型包需要 7-Zip（7z.exe）。请先安装 7-Zip 后重试。");
+        }
+
+        var stagingPath = targetPath.TrimEnd(Path.DirectorySeparatorChar) + $".staging-{Guid.NewGuid():N}";
+        Directory.CreateDirectory(stagingPath);
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = sevenZipPath,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                },
+            };
+            process.StartInfo.ArgumentList.Add("x");
+            process.StartInfo.ArgumentList.Add(archivePath);
+            process.StartInfo.ArgumentList.Add($"-o{stagingPath}");
+            process.StartInfo.ArgumentList.Add("-y");
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("无法启动 7z 解压程序。");
+            }
+
+            var standardOutput = process.StandardOutput.ReadToEndAsync();
+            var standardError = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            var output = await standardOutput.ConfigureAwait(false);
+            var error = await standardError.ConfigureAwait(false);
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidDataException($"7z 解压失败：{error.Trim()} {output.Trim()}".Trim());
+            }
+
+            var installSource = stagingPath;
+            if (item.StripTopLevel)
+            {
+                var directories = Directory.GetDirectories(stagingPath);
+                var files = Directory.GetFiles(stagingPath);
+                if (directories.Length == 1 && files.Length == 0)
+                {
+                    installSource = directories[0];
+                }
+            }
+            Directory.CreateDirectory(targetPath);
+            CopyDirectory(installSource, targetPath);
+        }
+        finally
+        {
+            if (Directory.Exists(stagingPath))
+            {
+                Directory.Delete(stagingPath, true);
+            }
+        }
+    }
+
+    private static string? FindSevenZipPath()
+    {
+        var candidates = new List<string> { "7z.exe", "7zz.exe" };
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        foreach (var root in new[] { programFiles, programFilesX86 })
+        {
+            if (!string.IsNullOrWhiteSpace(root))
+            {
+                candidates.Add(Path.Combine(root, "7-Zip", "7z.exe"));
+                candidates.Add(Path.Combine(root, "7-Zip", "7zz.exe"));
+            }
+        }
+        candidates.Add(Path.Combine(programFiles, "NVIDIA Corporation", "NVIDIA App", "7z.exe"));
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Contains(Path.DirectorySeparatorChar) && File.Exists(candidate))
+            {
+                return candidate;
+            }
+            if (!candidate.Contains(Path.DirectorySeparatorChar))
+            {
+                try
+                {
+                    var resolved = Environment.GetEnvironmentVariable("PATH")?
+                        .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(path => Path.Combine(path, candidate))
+                        .FirstOrDefault(File.Exists);
+                    if (resolved is not null)
+                    {
+                        return resolved;
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }
+        return null;
     }
 }
 

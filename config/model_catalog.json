@@ -296,6 +296,29 @@
       "dependencies": []
     },
     {
+      "id": "genie-tts-gui-v2-0-2",
+      "name": "Genie-TTS v2.0.2 CPU 轻量整合包",
+      "category": "质量路线工具",
+      "description": "GPT-SoVITS V2/V2 ProPlus 的 ONNX CPU 推理 GUI，带批量合成和独立 API 服务管理器；当前作为独立工具部署，不直接替换主质量队列。",
+      "relative_target": "models/tts_tools/genie-tts/portable",
+      "install_marker": "Genie-TTS GUI/Genie-TTS GUI.exe",
+      "size_bytes": 1931591446,
+      "sha256": "3A6C363C0B3C04F4ADE8C1A49904CA76F06C9BB57504F1BF6FB0A14C69D20E59",
+      "archive": "7z",
+      "strip_top_level": false,
+      "recommended": false,
+      "required": false,
+      "provider": "github_release",
+      "docs_url": "https://github.com/High-Logic/Genie-TTS/releases/tag/v2.0.2",
+      "sources": [
+        {
+          "label": "Genie-TTS v2.0.2 GitHub Release",
+          "url": "https://github.com/High-Logic/Genie-TTS/releases/download/v2.0.2/Genie-TTS.GUI.7z"
+        }
+      ],
+      "dependencies": []
+    },
+    {
       "id": "rvc-runtime",
       "name": "RVC 训练工具",
       "category": "RVC",

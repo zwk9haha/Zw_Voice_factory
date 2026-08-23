@@ -15,6 +15,7 @@ The launcher catalog uses public first-party repositories and direct assets. Mod
 | RVC runtime | GitHub branch archive | https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI |
 | FFmpeg | Pinned public archive | https://ffmpeg.org/ |
 | Sherpa ONNX | Official project and release pages | https://github.com/k2-fsa/sherpa-onnx |
+| Genie-TTS v2.0.2 | GitHub Release 7z bundle | https://github.com/High-Logic/Genie-TTS/releases/tag/v2.0.2 |
 
 ## Integrity
 
@@ -23,6 +24,8 @@ The SHA-256 values for the configured large weight files were calculated from th
 GitHub branch archives do not have a stable content hash because the branch can change. They are used only for runtime source packages. A future release should pin these entries to a Git commit archive and record its hash before publishing a reproducible bundle.
 
 The current Sherpa ONNX directory contains model packages whose official distribution is not represented by one stable archive URL in the project runtime. Its catalog entry therefore keeps the official project page as the source of truth and leaves the direct URL configurable through `config/model_catalog.local.json`.
+
+Genie-TTS v2.0.2 is an MIT-licensed, Windows-oriented GPT-SoVITS V2/V2 ProPlus ONNX inference engine. The release asset is a roughly 1.93 GB 7z GUI bundle with its own service manager and three example character models. The launcher can download and install the bundle when 7-Zip is available. It is currently deployed as an independent CPU inference tool; the main quality queue still uses the project's existing GPT-SoVITS Worker because Genie requires converted per-character ONNX assets and has a different load/reference API.
 
 ## Licensing
 
