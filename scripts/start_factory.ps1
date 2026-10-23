@@ -24,6 +24,10 @@ $indexWorker = Join-Path $factoryRoot 'model_workers\indextts_server.py'
 $fastPython = Join-Path $env:USERPROFILE 'anaconda3\python.exe'
 $fastWeights = Join-Path $factoryRoot 'models\tts\sherpa-onnx'
 $fastWorker = Join-Path $factoryRoot 'model_workers\fast_tts_server.py'
+$geniePython = Join-Path $factoryRoot 'models\tts_tools\genie-tts\runtime\python\python.exe'
+$genieWorker = Join-Path $factoryRoot 'model_workers\genie_tts_server.py'
+$genieData = Join-Path $factoryRoot 'models\tts_tools\genie-tts\portable\Genie-TTS GUI\GenieData'
+$genieModel = Join-Path $factoryRoot 'models\tts_tools\genie-tts\portable\Genie-TTS GUI\CharacterModels\v2ProPlus\feibi\tts_models'
 $ollamaPath = (Get-Command ollama.exe -ErrorAction Stop).Source
 $ollamaModelStore = Join-Path $factoryRoot 'local_models\ollama'
 $ollamaModelName = 'zw-voice-analyzer:4b'
@@ -37,6 +41,8 @@ $themePaletteTest = Join-Path $factoryRoot 'frontend\scripts\verify-theme-palett
 $uiNoiseTest = Join-Path $factoryRoot 'frontend\scripts\verify-ui-noise.mjs'
 $qualityWorkbenchTest = Join-Path $factoryRoot 'frontend\scripts\verify-quality-workbench.mjs'
 $oneClickLauncherTest = Join-Path $factoryRoot 'frontend\scripts\verify-one-click-launcher.mjs'
+$workflowConnectionsTest = Join-Path $factoryRoot 'frontend\scripts\verify-workflow-connections.mjs'
+$workflowTraceTest = Join-Path $factoryRoot 'frontend\scripts\verify-workflow-trace.mjs'
 $launcherStateRoot = Join-Path $factoryRoot 'outputs\runtime'
 $runtimeLogRoot = Join-Path $factoryRoot 'outputs\logs\runtime'
 $launcherStatePath = Join-Path $launcherStateRoot 'launcher.json'
@@ -327,7 +333,7 @@ function Stop-RecordedLauncher {
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     do {
         Start-Sleep -Milliseconds 300
-        $listeners = Get-NetTCPConnection -State Listen -LocalPort 5173, 8800, 9880, 9881, 9882, 9883, 11435 -ErrorAction SilentlyContinue
+        $listeners = Get-NetTCPConnection -State Listen -LocalPort 5173, 8800, 9880, 9881, 9882, 9883, 9884, 11435 -ErrorAction SilentlyContinue
     } while ($listeners -and [DateTime]::UtcNow -lt $deadline)
     if ($listeners) {
         throw '启动器已停止，但一个或多个托管端口在 20 秒内未关闭。'
@@ -813,6 +819,8 @@ try {
         Assert-File $uiNoiseTest '界面噪声回归检查'
         Assert-File $qualityWorkbenchTest '质量渲染交互回归检查'
         Assert-File $oneClickLauncherTest '一键流程与图形启动器回归检查'
+        Assert-File $workflowConnectionsTest '工作流端口连线回归检查'
+        Assert-File $workflowTraceTest '工作流运行详情回归检查'
         Write-Host '[测试] 主题配色隔离' -ForegroundColor Yellow
         & $nodePath $themePaletteTest
         if ($LASTEXITCODE -ne 0) {
@@ -837,13 +845,25 @@ try {
             throw "一键流程与图形启动器回归检查执行失败，退出码：$LASTEXITCODE"
         }
         Write-Host '[通过] 一键流程跳转与图形启动器配色' -ForegroundColor Green
+        Write-Host '[测试] 工作流端口连线规则' -ForegroundColor Yellow
+        & $nodePath $workflowConnectionsTest
+        if ($LASTEXITCODE -ne 0) {
+            throw "工作流端口连线规则执行失败，退出码：$LASTEXITCODE"
+        }
+        Write-Host '[通过] 工作流端口连线规则' -ForegroundColor Green
+        Write-Host '[测试] 工作流运行详情与画布结构' -ForegroundColor Yellow
+        & $nodePath $workflowTraceTest
+        if ($LASTEXITCODE -ne 0) {
+            throw "工作流运行详情执行失败，退出码：$LASTEXITCODE"
+        }
+        Write-Host '[通过] 工作流运行详情与画布结构' -ForegroundColor Green
     }
     Assert-Directory $voxcpmSource 'VoxCPM2 源码目录'
     Assert-Directory $voxcpmWeights 'VoxCPM2 权重目录'
     Assert-Directory $indexWeights 'IndexTTS2 权重目录'
     Assert-Directory $fastWeights 'Sherpa ONNX 轻量 TTS 权重目录'
     Assert-Directory $ollamaModelStore '项目内 Ollama 模型目录，请先运行 Start-ZwVoice.cmd setup-analyzer'
-    foreach ($port in @(9880, 9881, 9882, 9883, 11435, 8800, 5173)) { Assert-PortAvailable $port }
+    foreach ($port in @(9880, 9881, 9882, 9883, 9884, 11435, 8800, 5173)) { Assert-PortAvailable $port }
 
     $jobHandle = [ZwVoiceLauncher.NativeJob]::CreateKillOnCloseJob()
     if ($Mode -eq 'test') {
@@ -859,6 +879,7 @@ try {
     $env:ZW_VOICE_VOXCPM_URL = 'http://127.0.0.1:9881'
     $env:ZW_VOICE_INDEXTTS_URL = 'http://127.0.0.1:9882'
     $env:ZW_VOICE_FAST_TTS_URL = 'http://127.0.0.1:9883'
+    $env:ZW_VOICE_GENIE_URL = 'http://127.0.0.1:9884'
     $env:ZW_VOICE_ANALYZER_BACKEND = 'local'
     if ($Mode -eq 'test') {
         $env:ZW_VOICE_ANALYZER_FORCE_BACKEND = 'local'
@@ -943,7 +964,19 @@ try {
     Wait-ServiceReady -Name 'IndexTTS2 按需服务' -Uri 'http://127.0.0.1:9882/health' -Process $indexProcess -TimeoutSeconds 90
     Write-StartupProgress -Percent 94 -Message 'IndexTTS2 按需服务已就绪'
 
-    Write-StartupProgress -Percent 95 -Message '启动 WebUI'
+    $genieProcess = $null
+    if ((Test-Path -LiteralPath $geniePython -PathType Leaf) -and (Test-Path -LiteralPath $genieWorker -PathType Leaf) -and (Test-Path -LiteralPath $genieData -PathType Container) -and (Test-Path -LiteralPath $genieModel -PathType Container)) {
+        Write-StartupProgress -Percent 95 -Message '启动 Genie-TTS 试听服务'
+        $genieProcess = Start-ManagedProcess -Name 'Genie-TTS ONNX 试听服务' -Executable $geniePython -Arguments @(
+            $genieWorker, '--workspace-root', $factoryRoot, '--genie-data', $genieData, '--host', '127.0.0.1', '--port', '9884'
+        ) -WorkingDirectory $factoryRoot
+        Wait-ServiceReady -Name 'Genie-TTS ONNX 试听服务' -Uri 'http://127.0.0.1:9884/health' -Process $genieProcess -TimeoutSeconds 120
+        Write-StartupProgress -Percent 96 -Message 'Genie-TTS 试听服务已就绪'
+    } else {
+        Write-StartupProgress -Percent 96 -Message 'Genie-TTS 未安装，跳过可选试听服务'
+    }
+
+    Write-StartupProgress -Percent 97 -Message '启动 WebUI'
     $frontendProcess = Start-ManagedProcess -Name 'Vite WebUI 前端服务' -Executable $nodePath -Arguments @(
         $viteScript, '--host', '127.0.0.1', '--port', '5173', '--strictPort'
     ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
@@ -955,6 +988,7 @@ try {
         voxcpm2 = $voxcpmProcess.Id
         indextts2 = $indexProcess.Id
         fast_tts = $fastProcess.Id
+        genie_tts = if ($null -ne $genieProcess) { $genieProcess.Id } else { $null }
         local_analyzer = $ollamaProcess.Id
         backend = $backendProcess.Id
         frontend = $frontendProcess.Id

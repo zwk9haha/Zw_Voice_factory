@@ -9,14 +9,19 @@ from fastapi.staticfiles import StaticFiles
 
 from .continuous_production import ContinuousProductionService, create_continuous_production_router
 from .fast_route import FastRouteService, create_fast_route_router
+from .genie import GenieExperimentService, create_genie_router
 from .jobs import HttpModelGateway, JobService, ModelGateway, create_jobs_router
 from .loudness import LoudnessProcessor
 from .preparation import PreparationProblem, PreparationService, create_preparation_router
 from .production import ProductionService, create_production_router
+from .platform import PlatformService, create_platform_router
 from .resources import create_resources_router
 from .rvc import RvcInferenceRunner, RvcService, RvcTrainingRunner, create_rvc_router
 from .runtime_logs import RuntimeLogsService, configure_runtime_logger, create_runtime_logs_router
+from .voice_catalog import VoiceCatalogService, create_voice_catalog_router
+from .voice_capabilities import VoiceCapabilityService, create_voice_capability_router
 from .voice_analysis import VoiceAnalyzer, create_voice_analyzer
+from .workflows import WorkflowService, create_workflow_router
 from .workspace import WorkspacePayload, WorkspaceProject, WorkspaceSummary, build_workspace
 
 
@@ -44,6 +49,7 @@ def create_app(
     fast_route = FastRouteService(root)
     production = ProductionService(root)
     selected_loudness_processor = loudness_processor or LoudnessProcessor(root, runtime_logger=runtime_logger)
+    voice_catalog = VoiceCatalogService(root)
     rvc = RvcService(
         root,
         rvc_runner,
@@ -57,6 +63,7 @@ def create_app(
         selected_model_gateway,
         reference_event_handler=preparation.record_reference_job,
         emotion_event_handler=preparation.record_emotion_job,
+        catalog_event_handler=voice_catalog.record_job_event,
         quality_stability_handler=rvc.apply_quality_stability,
         fast_route_handler=rvc.apply_fast_route,
         gpu_lock=rvc.gpu_lock,
@@ -71,6 +78,8 @@ def create_app(
         rvc,
         runtime_logger=runtime_logger,
     )
+    platform = PlatformService(root, preparation, catalog=voice_catalog, jobs=jobs)
+    workflows = WorkflowService(root, preparation, jobs, catalog=voice_catalog, platform=platform, runtime_logger=runtime_logger)
     application = FastAPI(title="Zw Voice Factory API", version="0.2.0")
     application.add_middleware(
         CORSMiddleware,
@@ -96,22 +105,47 @@ def create_app(
         StaticFiles(directory=root / "outputs" / "projects"),
         name="project-assets",
     )
+    platform_assets_root = root / "outputs" / "platform"
+    platform_assets_root.mkdir(parents=True, exist_ok=True)
+    application.mount(
+        "/media/outputs/platform",
+        StaticFiles(directory=platform_assets_root),
+        name="platform-assets",
+    )
     application.mount(
         "/media/outputs/rvc-previews",
         StaticFiles(directory=root / "outputs" / "rvc" / "previews"),
         name="rvc-previews",
     )
+    experiment_root = root / "outputs" / "runtime" / "genie-ab-test"
+    experiment_root.mkdir(parents=True, exist_ok=True)
+    application.mount(
+        "/media/outputs/experiments",
+        StaticFiles(directory=experiment_root),
+        name="experiment-assets",
+    )
+    application.mount(
+        "/media/outputs/voice-catalog",
+        StaticFiles(directory=voice_catalog.catalog_root),
+        name="voice-catalog-assets",
+    )
     application.include_router(create_preparation_router(preparation))
     application.include_router(create_fast_route_router(fast_route))
+    application.include_router(create_genie_router(GenieExperimentService(root, selected_model_gateway)))
     application.include_router(create_production_router(production))
     application.include_router(create_rvc_router(rvc))
     application.include_router(create_jobs_router(jobs))
     application.include_router(create_continuous_production_router(continuous_production))
     application.include_router(create_resources_router())
     application.include_router(create_runtime_logs_router(runtime_logs))
+    application.include_router(create_platform_router(platform))
+    application.include_router(create_voice_catalog_router(voice_catalog, jobs))
+    application.include_router(create_voice_capability_router(VoiceCapabilityService(voice_catalog, jobs)))
+    application.include_router(create_workflow_router(workflows))
     application.router.add_event_handler("shutdown", jobs.close)
     application.router.add_event_handler("shutdown", continuous_production.close)
     application.router.add_event_handler("shutdown", rvc.close)
+    application.router.add_event_handler("shutdown", workflows.close)
 
     @application.get("/api/health")
     def health() -> dict[str, str | bool]:

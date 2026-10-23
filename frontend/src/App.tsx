@@ -1,14 +1,18 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, ArrowRight, BellRing, ChevronDown, Cpu, Expand, Eye, EyeOff, FileText, HardDrive, Library, MemoryStick, Moon, Settings2, Sun, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchContinuousProduction, fetchProductionSettings, fetchRvcWorkspace, fetchSources, fetchSystemResources, fetchWorkspace, updateQualityModel, updateRvcSettings } from "./api";
+import { fetchContinuousProduction, fetchPlatformProjects, fetchProductionSettings, fetchRvcWorkspace, fetchSources, fetchSystemResources, fetchWorkspace, updateQualityModel, updateRvcSettings } from "./api";
 import { ContinuousSliceNavigator } from "./ContinuousSliceNavigator";
 import { FastWorkbench } from "./FastWorkbench";
 import { PreparationWorkspace } from "./PreparationWorkspace";
 import { QualityWorkbench } from "./QualityWorkbench";
+import { PlatformHome } from "./PlatformHome";
 import { RvcWorkbench } from "./RvcWorkbench";
 import { RuntimeLogPanel } from "./RuntimeLogPanel";
-import type { ProductionStageId, QualityModelId, RouteMode, RvcWorkspace, SourceSummary } from "./types";
+import { ShortTextWorkbench } from "./ShortTextWorkbench";
+import { VoiceCatalogWorkbench } from "./VoiceCatalogWorkbench";
+import { WorkflowStudio } from "./WorkflowStudio";
+import type { PlatformProject, ProductionStageId, QualityModelId, RouteMode, RvcWorkspace, SourceSummary } from "./types";
 import { WorkflowNav } from "./WorkflowNav";
 
 const EMPTY_SOURCES: SourceSummary[] = [];
@@ -35,6 +39,11 @@ function App() {
   const [showRuntimeLogs, setShowRuntimeLogs] = useState(false);
   const [selectedSliceId, setSelectedSliceId] = useState<string | null>(null);
   const [dismissedRvcReviewKey, setDismissedRvcReviewKey] = useState("");
+  const [showPlatformHome, setShowPlatformHome] = useState(true);
+  const [showVoiceCatalog, setShowVoiceCatalog] = useState(false);
+  const [showShortTextConfig, setShowShortTextConfig] = useState(false);
+  const [showWorkflowStudio, setShowWorkflowStudio] = useState(false);
+  const [workflowProjectId, setWorkflowProjectId] = useState<string | null>(null);
   const { data: resources } = useQuery({
     queryKey: ["system-resources"],
     queryFn: fetchSystemResources,
@@ -51,6 +60,11 @@ function App() {
   const { data: sourceData, isFetched: sourcesFetched } = useQuery({
     queryKey: ["sources"],
     queryFn: fetchSources,
+    retry: false,
+  });
+  const { data: platformProjects = [], isFetching: platformProjectsFetching, refetch: refetchPlatformProjects } = useQuery({
+    queryKey: ["platform-projects"],
+    queryFn: fetchPlatformProjects,
     retry: false,
   });
   const sources = sourceData ?? EMPTY_SOURCES;
@@ -161,6 +175,48 @@ function App() {
     setRvcOpen(true);
   }
 
+  function openNovelProject(projectId: string) {
+    setActiveProjectId(projectId);
+    setActiveStage("source");
+    setShowWorkflowStudio(false);
+    setShowVoiceCatalog(false);
+    setShowShortTextConfig(false);
+    setShowPlatformHome(false);
+  }
+
+  function addPlatformProject(project: PlatformProject) {
+    queryClient.setQueryData<PlatformProject[]>(["platform-projects"], (current = []) => [project, ...current.filter((item) => item.project_id !== project.project_id)]);
+  }
+
+  function openShortTextConfig() {
+    setShowWorkflowStudio(false);
+    setShowPlatformHome(false);
+    setShowVoiceCatalog(false);
+    setShowShortTextConfig(true);
+  }
+
+  function openPlatformHome() {
+    setShowWorkflowStudio(false);
+    setShowShortTextConfig(false);
+    setShowVoiceCatalog(false);
+    setShowPlatformHome(true);
+  }
+
+  function openVoiceCatalog() {
+    setShowWorkflowStudio(false);
+    setShowShortTextConfig(false);
+    setShowPlatformHome(false);
+    setShowVoiceCatalog(true);
+  }
+
+  function openWorkflowStudio(projectId?: string) {
+    setWorkflowProjectId(projectId ?? null);
+    setShowPlatformHome(false);
+    setShowVoiceCatalog(false);
+    setShowShortTextConfig(false);
+    setShowWorkflowStudio(true);
+  }
+
   const cpuPercent = resources?.cpu.percent ?? 0;
   const memoryPercent = resources?.memory.percent ?? 0;
   const gpuPercent = resources?.gpu.percent ?? 0;
@@ -174,14 +230,15 @@ function App() {
   const rvcReviewKey = continuousRun && rvcReviewTasks.length
     ? continuousRun.run_id + ":" + rvcReviewTasks.map((task) => task.character_id).sort().join(",")
     : "";
+  const isPlatformView = showPlatformHome || showVoiceCatalog || showShortTextConfig || showWorkflowStudio;
 
   if (!workspace || !selectedTemplate) {
     return <main className="app-bootstrap"><Activity size={18} /><strong>{isError ? "无法连接后端服务" : "正在读取工作区"}</strong><span>{isError ? "请通过启动器重新启动后再试" : "正在加载项目与推理模板"}</span></main>;
   }
 
   return (
-    <main className={"app-shell" + (continuousRun?.slices.length ? " app-shell--with-slices" : "")}>
-      <section className={`resource-strip ${showResources ? "" : "resource-strip--collapsed"}`} aria-label="系统资源监控">
+    <main className={"app-shell" + (continuousRun?.slices.length && !isPlatformView ? " app-shell--with-slices" : "") + (isPlatformView ? " app-shell--platform-home" : "")}>
+      <section className={`resource-strip ${isPlatformView ? "resource-strip--platform-hidden" : showResources ? "" : "resource-strip--collapsed"}`} aria-label="系统资源监控">
         {showResources && (
           <div className="resource-metrics">
             <div className="resource-metric"><Cpu size={12} /><span>CPU</span><b>{Math.round(cpuPercent)}%</b><i><span style={{ width: `${cpuPercent}%` }} /></i></div>
@@ -192,19 +249,19 @@ function App() {
         )}
         <button className="resource-toggle" title={showResources ? "收起资源监控" : "显示资源监控"} aria-pressed={showResources} onClick={() => setShowResources((current) => !current)}>{showResources ? <EyeOff size={13} /> : <Eye size={13} />}<span>资源监控</span></button>
       </section>
-      <header className="topbar">
+      <header className={`topbar ${isPlatformView ? "topbar--platform" : ""}`}>
         <div className="brand"><div className="brand-mark"><Volume2 size={18} /></div><strong>Zw Voice Factory</strong><span>2.0</span></div>
-        <label className="project-switch"><Library size={15} /><select aria-label="当前项目" value={activeProjectId ?? ""} disabled={!sources.length} onChange={(event) => selectActiveProject(event.target.value || null)}>{sources.length ? sources.map((source) => <option key={source.project_id} value={source.project_id}>{source.display_name}</option>) : <option value="">{workspace.project.name}</option>}</select><ChevronDown size={14} /></label>
-        <div className="route-switch" aria-label="朗读路线">
+        {!isPlatformView && <label className="project-switch"><Library size={15} /><select aria-label="当前项目" value={activeProjectId ?? ""} disabled={!sources.length} onChange={(event) => selectActiveProject(event.target.value || null)}>{sources.length ? sources.map((source) => <option key={source.project_id} value={source.project_id}>{source.display_name}</option>) : <option value="">{workspace.project.name}</option>}</select><ChevronDown size={14} /></label>}
+        {!isPlatformView && <div className="route-switch" aria-label="朗读路线">
           <button className={routeMode === "fast" ? "active" : ""} onClick={() => setRouteMode("fast")}>极速</button>
           <button className={routeMode === "quality" ? "active" : ""} onClick={() => setRouteMode("quality")}>质量</button>
-        </div>
-        <div className="top-actions"><span className={`health ${isError ? "health--error" : ""}`}><Activity size={14} />{isError ? "后端离线" : isFetching ? "同步中" : "后端在线"}</span><button className="icon-button runtime-log-trigger" title="查看运行日志" onClick={() => setShowRuntimeLogs(true)}><FileText size={16} /></button><button className="icon-button" title={theme === "dark" ? "切换到明亮主题" : "切换到暗色主题"} onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}>{theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}</button></div>
+        </div>}
+        <div className="top-actions">{!isPlatformView && <button className="platform-home-button" onClick={openPlatformHome}><Library size={14} />平台首页</button>}<span className={`health ${isError ? "health--error" : ""}`}><Activity size={14} />{isError ? "后端离线" : isFetching ? "同步中" : "后端在线"}</span><button className="icon-button runtime-log-trigger" title="查看运行日志" onClick={() => setShowRuntimeLogs(true)}><FileText size={16} /></button><button className="icon-button" title={theme === "dark" ? "切换到明亮主题" : "切换到暗色主题"} onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}>{theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}</button></div>
       </header>
 
-      <WorkflowNav stages={workflow} activeStage={activeStage} onStageChange={setActiveStage} />
+      {!isPlatformView && <WorkflowNav stages={workflow} activeStage={activeStage} onStageChange={setActiveStage} />}
 
-      <section className="route-context">
+      {!isPlatformView && <section className="route-context">
         <button className="template-context" onClick={() => setActiveStage("template")}><Settings2 size={14} /><span>模板</span><strong>{selectedTemplate.display_name}</strong></button>
         {routeMode === "quality" ? <div className="route-pipeline" aria-label="质量路线模型链路">
           <span><small>参考生产</small><strong>VoxCPM2</strong></span><ArrowRight size={14} />
@@ -224,13 +281,13 @@ function App() {
           </label>
           <button ref={rvcButtonRef} className="rvc-open-button" title="打开 RVC 速度路线工作台" disabled={!activeProjectId} onClick={openRvcWorkbench}><Expand size={14} /></button>
         </div>
-      </section>
+      </section>}
 
-      {continuousRun?.slices.length ? (
+      {!isPlatformView && continuousRun?.slices.length ? (
         <ContinuousSliceNavigator run={continuousRun} selectedSliceId={selectedSliceId} onSelect={setSelectedSliceId} />
       ) : null}
 
-      {activeStage === "quality_render" ? (
+      {showWorkflowStudio ? <WorkflowStudio onBack={openPlatformHome} projectId={workflowProjectId ?? undefined} /> : showVoiceCatalog ? <VoiceCatalogWorkbench onBack={openPlatformHome} /> : showShortTextConfig ? <ShortTextWorkbench onBack={openPlatformHome} onOpenCatalog={openVoiceCatalog} onProjectCreated={addPlatformProject} /> : showPlatformHome ? <PlatformHome projects={platformProjects} loading={platformProjectsFetching} onRefresh={() => { void refetchPlatformProjects(); }} onOpenNovel={openNovelProject} onProjectCreated={addPlatformProject} onOpenCatalog={openVoiceCatalog} onOpenShortText={openShortTextConfig} onOpenWorkflowStudio={openWorkflowStudio} /> : activeStage === "quality_render" ? (
         routeMode === "fast"
           ? <FastWorkbench sources={sources} selectedProjectId={activeProjectId} selectedSliceId={selectedSliceId} onProjectChange={selectActiveProject} onStageChange={setActiveStage} />
           : <QualityWorkbench qualityModel={qualityModel} qualityModelLabel={selectedQualityOption?.label ?? "GPT-SoVITS V2"} sources={sources} selectedProjectId={activeProjectId} selectedSliceId={selectedSliceId} onSelectedSliceChange={setSelectedSliceId} onProjectChange={selectActiveProject} onStageChange={setActiveStage} />

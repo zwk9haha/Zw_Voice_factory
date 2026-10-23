@@ -2139,12 +2139,27 @@ class RvcService:
     def _write_training_set(self, revision: RvcTrainingSetRevision) -> None:
         path = self._training_set_manifest_path(revision)
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".json.tmp")
-        temporary.write_text(
-            json.dumps(revision.model_dump(mode="json"), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        temporary.replace(path)
+        # Use a per-write temporary file.  A fixed ``manifest.json.tmp`` name
+        # can be observed by another worker (or by Windows Defender) while a
+        # training job is updating its material, causing ``replace`` to fail
+        # with WinError 5 and turning an otherwise valid preparation into a
+        # spurious retry.
+        temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            temporary.write_text(
+                json.dumps(revision.model_dump(mode="json"), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            for attempt in range(6):
+                try:
+                    temporary.replace(path)
+                    return
+                except PermissionError:
+                    if attempt == 5:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def _read_training_set(self, revision_id: str) -> RvcTrainingSetRevision | None:
         if not revision_id:

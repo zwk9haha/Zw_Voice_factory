@@ -1195,7 +1195,24 @@ class ContinuousProductionService:
                     )
                     return
                 if job.status == "failed":
-                    if snapshot.retry_count < 1:
+                    # Material validation failures are deterministic for the
+                    # currently accepted reference and cannot be fixed by
+                    # submitting the same training job again.  Keep the
+                    # original job id visible and surface the actionable
+                    # failure instead of immediately replacing it with a
+                    # second id while the client is polling the task.
+                    retryable = not (
+                        job.error
+                        and any(
+                            marker in job.error
+                            for marker in (
+                                "受标准参考约束的有效素材不足",
+                                "训练材料缺少标准参考音频",
+                                "训练材料不足",
+                            )
+                        )
+                    )
+                    if snapshot.retry_count < 1 and retryable:
                         snapshot = self._set_rvc_task(
                             project_id,
                             run_id,
@@ -1634,12 +1651,22 @@ class ContinuousProductionService:
         run.updated_at = datetime.now(timezone.utc)
         target = self._path(run.project_id)
         target.parent.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_suffix(".json.tmp")
-        temporary.write_text(
-            json.dumps(run.model_dump(mode="json"), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        temporary.replace(target)
+        temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            temporary.write_text(
+                json.dumps(run.model_dump(mode="json"), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            for attempt in range(6):
+                try:
+                    temporary.replace(target)
+                    return
+                except PermissionError:
+                    if attempt == 5:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def _load_runs(self) -> None:
         root = self.workspace_root / "outputs" / "projects"
@@ -1662,7 +1689,10 @@ class ContinuousProductionService:
             if self._futures.get(project_id) is completed:
                 self._futures.pop(project_id, None)
                 run = self._runs.get(project_id)
-                if run is not None and self._needs_prefetch(run):
+                if run is not None and (
+                    run.state in {"starting", "running"}
+                    or self._needs_prefetch(run)
+                ):
                     self._schedule_locked(run)
 
 

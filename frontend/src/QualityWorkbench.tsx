@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, CircleAlert, CircleStop, Download, FileAudio, Gauge, Layers3, ListMusic, LoaderCircle, Mic, Pause, Play, RefreshCw, Save, Settings2, Sparkles, Trash2, Upload, Users, WandSparkles } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CircleAlert, CircleStop, Download, FileAudio, FlaskConical, Gauge, Layers3, ListMusic, LoaderCircle, Mic, Pause, Play, RefreshCw, Save, Settings2, Sparkles, Trash2, Upload, Users, WandSparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AdvancedSettingsPanel, DEFAULT_PROGRAM_LOUDNESS_POLICY, DEFAULT_QUALITY_RENDER_OPTIONS } from "./AdvancedSettingsPanel";
 import { AudioPlayer } from "./AudioPlayer";
@@ -6,6 +6,7 @@ import { cancelQualityQueue, createAudioJob, deleteQualityCache, fetchAudioJob, 
 import { normalizeAudioToWav } from "./audioFile";
 import { consumeQualityPcmStream, QualityPcmPlayer } from "./qualityAudioStream";
 import { collectReusableQualityJobs, resolveQualityVoice } from "./qualityRouting";
+import { GenieExperimentPanel } from "./GenieExperimentPanel";
 import type { AudioJob, AudioJobRequest, ContinuousProductionRun, LoudnessMetrics, MergedAudio, PreparationPreview, PreparedDirectorSegment, ProductionSettings, ProductionStageId, ProgramLoudnessPolicy, QualityModelId, QualityRenderOptions, ReferencePlanItem, RvcWorkspace, SourceSummary } from "./types";
 import { Waveform } from "./Waveform";
 
@@ -142,6 +143,7 @@ export function QualityWorkbench({ qualityModel, qualityModelLabel, sources, sel
   const [cacheBusy, setCacheBusy] = useState(false);
   const [segmentVoiceBusy, setSegmentVoiceBusy] = useState<string | null>(null);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [showGenieExperiment, setShowGenieExperiment] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -251,6 +253,21 @@ export function QualityWorkbench({ qualityModel, qualityModelLabel, sources, sel
   function referenceAudioUrl(reference: WorkbenchReference | null): string | null {
     return ownReferenceAudioUrl(referenceAudioSource(reference));
   }
+
+  const genieReferences = references
+    .map((reference) => {
+      const source = referenceAudioSource(reference);
+      const audioUrl = referenceAudioUrl(reference);
+      return audioUrl && source
+        ? {
+          reference_id: reference.reference_id,
+          display_name: reference.display_name,
+          reference_text: source.reference_text,
+          audio_url: audioUrl,
+        }
+        : null;
+    })
+    .filter((reference): reference is NonNullable<typeof reference> => Boolean(reference));
 
   function voiceDecisionForSegment(segment: PreparedDirectorSegment) {
     const segmentIndex = segmentIndexById.get(segment.segment_id) ?? -1;
@@ -1490,7 +1507,7 @@ export function QualityWorkbench({ qualityModel, qualityModelLabel, sources, sel
       </section>
 
       <aside className="result-pane">
-        <div className="pane-heading quality-result-heading"><div><span className="eyebrow">QUALITY MODEL</span><h2>{qualityModelLabel}</h2></div><button className="secondary-button" onClick={() => setShowAdvancedSettings(true)}><Settings2 size={14} />高级设置</button><span className={`queue-state ${failedCount ? "queue-state--failed" : ""}`}><span />{streamView ? `流播剩余 ${streamView.remaining} 句` : pendingCount ? `${pendingCount} 个任务进行中` : failedCount ? `${failedCount} 个任务失败` : "队列空闲"}</span></div>
+        <div className="pane-heading quality-result-heading"><div><span className="eyebrow">QUALITY MODEL</span><h2>{qualityModelLabel}</h2></div><button className="secondary-button" onClick={() => setShowGenieExperiment(true)}><FlaskConical size={14} />Genie A/B</button><button className="secondary-button" onClick={() => setShowAdvancedSettings(true)}><Settings2 size={14} />高级设置</button><span className={`queue-state ${failedCount ? "queue-state--failed" : ""}`}><span />{streamView ? `流播剩余 ${streamView.remaining} 句` : pendingCount ? `${pendingCount} 个任务进行中` : failedCount ? `${failedCount} 个任务失败` : "队列空闲"}</span></div>
         <div className="quality-cache-toolbar">
           <label><input type="checkbox" checked={allCacheSelected} disabled={!completedCacheJobs.length || cacheBusy} onChange={(event) => setSelectedCacheJobIds(event.target.checked ? new Set(completedCacheJobs.map((job) => job.job_id)) : new Set())} /><span>全选缓存</span></label>
           <span>{selectedCacheJobIds.size} / {completedCacheJobs.length}</span>
@@ -1500,6 +1517,7 @@ export function QualityWorkbench({ qualityModel, qualityModelLabel, sources, sel
             <button className="secondary-button danger-button" disabled={cacheBusy || Boolean(streamView) || !selectedCacheJobIds.size} onClick={() => void removeCacheJobs([...selectedCacheJobIds])}>{cacheBusy ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}批量删除</button>
           </div>
         </div>
+        {showGenieExperiment && selectedProjectId && <GenieExperimentPanel projectId={selectedProjectId} references={genieReferences} defaultReferenceId={activeReference?.reference_id ?? null} defaultText={visibleSegments[0]?.text ?? "你好。"} qualityModel={qualityModel} qualityModelLabel={qualityModelLabel} renderOptions={renderOptions} onClose={() => setShowGenieExperiment(false)} />}
         <div className="result-list">
           {visibleSegments.map((segment) => {
             const reference = referenceForSegment(segment);

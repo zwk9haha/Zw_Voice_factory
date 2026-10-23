@@ -367,7 +367,11 @@ internal sealed class LauncherForm : Form
             FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
             WorkingDirectory = _factoryRoot,
             UseShellExecute = false,
-            CreateNoWindow = true,
+            // Keep the service owner console visible when the launcher is
+            // started from a desktop/agent session.  This gives operators a
+            // concrete owner window to inspect and lets the launcher process
+            // lifecycle be verified independently of the WinForms surface.
+            CreateNoWindow = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,

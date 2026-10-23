@@ -1,6 +1,118 @@
 export type RouteMode = "fast" | "quality";
 export type VoiceInferenceMode = "cloud" | "hybrid" | "local";
 export type ProductionStageId = "template" | "source" | "casting" | "references" | "emotions" | "director" | "quality_render";
+export type PlatformProjectType = "short_text" | "novel" | "script" | "subtitle" | "document";
+export type PlatformProjectStatus = "draft" | "ready" | "running" | "complete" | "failed";
+export type VoiceTaskStatus = "draft" | "ready_for_review" | "running" | "complete" | "failed";
+
+export interface PlatformProject {
+  project_id: string;
+  name: string;
+  content_type: PlatformProjectType;
+  status: PlatformProjectStatus;
+  source_text_length: number;
+  task_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlatformSpeakerAssignment {
+  speaker_kind: "narration" | "named" | "unknown";
+  speaker_name: string;
+  confidence: number;
+  voice_status: "unmatched" | "archetype_available" | "project_snapshot" | "catalog_match";
+}
+
+export interface PlatformTextSegment {
+  segment_id: string;
+  index: number;
+  text: string;
+  speaker: PlatformSpeakerAssignment;
+  emotion: string;
+  emotion_confidence: number;
+}
+
+export interface VoiceTask {
+  task_id: string;
+  project_id: string;
+  task_type: "quick_preview" | "long_form" | "render";
+  status: VoiceTaskStatus;
+  input_text_length: number;
+  segment_count: number;
+  matched_voice_count: number;
+  generated_voice_count: number;
+  message: string;
+  created_at: string;
+  updated_at: string;
+  segments: PlatformTextSegment[];
+}
+
+export interface PlatformProjectWorkspace {
+  project: PlatformProject;
+  tasks: VoiceTask[];
+  voice_snapshots: ProjectVoiceSnapshot[];
+  voice_decisions: ProjectVoiceDecision[];
+}
+
+export type ProjectVoiceSnapshotSource = "catalog" | "generated" | "archetype";
+export type ProjectVoiceSnapshotStatus = "pending" | "approved" | "superseded" | "revoked" | "failed";
+export type VoiceGenerationStatus = "not_started" | "queued" | "running" | "complete" | "failed";
+
+export interface ProjectVoiceSnapshot {
+  snapshot_id: string;
+  project_id: string;
+  speaker_key: string;
+  display_name: string;
+  source: ProjectVoiceSnapshotSource;
+  status: ProjectVoiceSnapshotStatus;
+  catalog_asset_id: string | null;
+  catalog_version_id: string | null;
+  job_id: string | null;
+  audio_url: string | null;
+  reference_text: string | null;
+  voice_prompt: string;
+  generation_status: VoiceGenerationStatus;
+  match_score: number | null;
+  match_reasons: string[];
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+}
+
+export interface VoiceCatalogMatch {
+  asset_id: string;
+  display_name: string;
+  score: number;
+  reasons: string[];
+  version_id: string | null;
+  audio_url: string | null;
+  duration_seconds: number | null;
+  ready: boolean;
+}
+
+export interface ProjectVoiceDecision {
+  decision_id: string;
+  project_id: string;
+  speaker_key: string;
+  display_name: string;
+  action: "reuse_snapshot" | "catalog_match" | "generate_candidate" | "generation_started";
+  source: "project_snapshot" | "catalog" | "generate";
+  reason: string;
+  generation_required: boolean;
+  snapshot: ProjectVoiceSnapshot | null;
+  selected_match: VoiceCatalogMatch | null;
+  candidates: VoiceCatalogMatch[];
+  generation: {
+    status: VoiceGenerationStatus;
+    required: boolean;
+    job_id: string | null;
+    snapshot_id: string | null;
+    reference_text: string;
+    voice_prompt: string;
+  } | null;
+  created_at: string;
+  updated_at: string;
+}
 export type ProductionStageStatus = "complete" | "current" | "ready" | "blocked";
 export type StabilityPolicy = "disabled" | "benchmark_gated" | "enabled";
 export type QualityModelId = "gpt_sovits_v1" | "gpt_sovits_v2" | "gpt_sovits_v2_pro" | "gpt_sovits_v2_pro_plus" | "gpt_sovits_v3" | "gpt_sovits_v4" | "indextts2";
@@ -49,7 +161,7 @@ export interface WorkspacePayload {
   active_template: InferenceTemplate;
 }
 
-export type AudioJobKind = "voxcpm_reference" | "emotion_variant" | "quality_render" | "fast_render";
+export type AudioJobKind = "voxcpm_reference" | "emotion_variant" | "catalog_reference" | "catalog_derivative" | "quality_render" | "fast_render";
 export type AudioJobStatus = "queued" | "running" | "complete" | "failed" | "cancelled";
 
 export interface ProgramLoudnessPolicy {
@@ -92,6 +204,10 @@ export interface AudioJobRequest {
   fast_voice_id?: string;
   fast_speed?: number;
   fast_rvc_enabled?: boolean;
+  catalog_asset_id?: string;
+  catalog_version_id?: string;
+  voxcpm_cfg_value?: number;
+  voxcpm_inference_timesteps?: number;
 }
 
 export interface AudioJob {
@@ -111,6 +227,10 @@ export interface AudioJob {
   fast_voice_id: string | null;
   fast_speed: number | null;
   fast_rvc_enabled: boolean | null;
+  catalog_asset_id: string | null;
+  catalog_version_id: string | null;
+  voxcpm_cfg_value: number | null;
+  voxcpm_inference_timesteps: number | null;
   streaming: boolean;
   loudness_policy: ProgramLoudnessPolicy;
   loudness_metrics: LoudnessMetrics | null;
@@ -125,6 +245,69 @@ export interface AudioJob {
   error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface VoiceCatalogPreset {
+  preset_id: string;
+  display_name: string;
+  description: string;
+  cfg_value: number;
+  inference_timesteps: number;
+  target_duration_seconds: number;
+}
+
+export interface VoiceCatalogReferenceText {
+  text_id: string;
+  display_name: string;
+  purpose: string;
+  text: string;
+}
+
+export type VoiceCatalogVersionStatus = "queued" | "running" | "complete" | "failed";
+export type VoiceCatalogVersionSource = "generated" | "derived" | "uploaded" | "recorded";
+
+export interface VoiceCatalogVersion {
+  version_id: string;
+  source: VoiceCatalogVersionSource;
+  parent_version_id: string | null;
+  variant_name: string;
+  variant_description: string;
+  emotion: string | null;
+  intensity: number | null;
+  status: VoiceCatalogVersionStatus;
+  audio_url: string | null;
+  duration_seconds: number | null;
+  job_id: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VoiceCatalogAsset {
+  asset_id: string;
+  display_name: string;
+  category: string;
+  gender: "female" | "male";
+  age_range: "young_adult" | "adult" | "middle_aged" | "senior";
+  voice_prompt: string;
+  timbre_tags: string[];
+  delivery_tags: string[];
+  voice_constraints: string[];
+  use_cases: string[];
+  rationale: string;
+  confidence: number;
+  reference_text: string;
+  generation_preset_id: string;
+  active_version_id: string | null;
+  versions: VoiceCatalogVersion[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VoiceCatalogPayload {
+  presets: VoiceCatalogPreset[];
+  reference_texts: VoiceCatalogReferenceText[];
+  assets: VoiceCatalogAsset[];
 }
 
 export interface CancelledQualityJobs {
@@ -667,6 +850,23 @@ export interface ProductionSettings {
   quality_models: QualityModelOption[];
 }
 
+export interface GenieVoiceOption {
+  voice_id: string;
+  label: string;
+}
+
+export interface GenieCompareResult {
+  experiment_id: string;
+  text: string;
+  gsv_audio_url: string;
+  genie_audio_url: string;
+  gsv_elapsed_ms: number;
+  genie_elapsed_ms: number;
+  gsv_duration_seconds: number;
+  genie_duration_seconds: number;
+  genie_worker_url: string;
+}
+
 export interface RvcTrainingOptions {
   version: "v2";
   sample_rate: "40k";
@@ -972,4 +1172,172 @@ export interface SystemResources {
     total_mb: number | null;
   };
   timestamp: string;
+}
+
+export type WorkflowValueType = "string" | "number" | "boolean" | "json" | "text" | "text_segment" | "text_segments" | "voice_profile" | "voice_matches" | "voice_snapshot" | "audio_asset" | "audio_assets" | "job_ids" | "any";
+
+export interface WorkflowPortDefinition {
+  name: string;
+  label: string;
+  type: WorkflowValueType;
+  required: boolean;
+  multiple: boolean;
+  description: string;
+}
+
+export interface WorkflowNodeManifest {
+  type: string;
+  version: string;
+  label: string;
+  category: string;
+  description: string;
+  inputs: WorkflowPortDefinition[];
+  outputs: WorkflowPortDefinition[];
+  config_schema: Record<string, unknown>;
+  execution: {
+    mode: "sync" | "job" | "human" | "control";
+    resource_group: string;
+    retryable: boolean;
+    idempotent: boolean;
+    cacheable: boolean;
+    requires_human_review: boolean;
+  };
+}
+
+export interface WorkflowNodeDefinition {
+  node_id: string;
+  node_type: string;
+  version: string;
+  title: string | null;
+  description: string;
+  position: { x: number; y: number };
+  inputs: Record<string, unknown>;
+  config: Record<string, unknown>;
+  depends_on: string[];
+}
+
+export interface WorkflowEdgeDefinition {
+  edge_id: string;
+  source_node: string;
+  source_port: string;
+  target_node: string;
+  target_port: string;
+  kind: "data" | "branch";
+}
+
+export interface WorkflowInputDefinition extends WorkflowPortDefinition {
+  default: unknown;
+  widget?: "auto" | "text" | "textarea" | "file" | "select" | "json";
+  options?: string[];
+}
+
+export interface WorkflowOutputBinding {
+  name: string;
+  type: WorkflowValueType;
+  source_node: string;
+  source_port: string;
+  label?: string;
+  display?: "auto" | "text" | "json" | "audio";
+}
+
+export interface WorkflowDefinition {
+  workflow_id: string;
+  name: string;
+  version: string;
+  description: string;
+  nodes: WorkflowNodeDefinition[];
+  inputs: WorkflowInputDefinition[];
+  edges: WorkflowEdgeDefinition[];
+  outputs: WorkflowOutputBinding[];
+  lifecycle: "draft" | "published" | "archived";
+  published_at: string | null;
+  allow_pause: boolean;
+  allow_retry: boolean;
+  allow_recovery: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowGraphValidation {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  node_count: number;
+  edge_count: number;
+  unreachable_nodes: string[];
+}
+
+export type WorkflowNodeStatus = "pending" | "queued" | "running" | "awaiting_review" | "paused" | "completed" | "failed" | "cancelled" | "skipped";
+export type WorkflowRunStatus = "draft" | "queued" | "running" | "awaiting_review" | "paused" | "completed" | "failed" | "cancelled";
+export type WorkflowNodeSkipReason = "cache_hit" | "dependency_failed" | "branch_not_selected" | "upstream_not_selected";
+
+export interface WorkflowNodeReview {
+  payload: Record<string, unknown>;
+  decision: "approved" | "rejected" | null;
+  comment: string | null;
+  requested_at: string;
+  reviewed_at: string | null;
+}
+
+export interface WorkflowNodeRun {
+  node_id: string;
+  node_type: string;
+  version: string;
+  status: WorkflowNodeStatus;
+  skip_reason: WorkflowNodeSkipReason | null;
+  progress: number;
+  message: string;
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  review: WorkflowNodeReview | null;
+  error: string | null;
+  cache_key: string | null;
+  attempt: number;
+  started_at: string | null;
+  finished_at: string | null;
+  elapsed_seconds: number;
+}
+
+export interface WorkflowEvent {
+  event_id: string;
+  level: "info" | "warning" | "error";
+  message: string;
+  node_id: string | null;
+  created_at: string;
+}
+
+export interface WorkflowRun {
+  run_id: string;
+  workflow_id: string;
+  workflow_version?: string | null;
+  project_id?: string | null;
+  project_bound?: boolean;
+  status: WorkflowRunStatus;
+  progress: number;
+  message: string;
+  input: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  node_runs: WorkflowNodeRun[];
+  events: WorkflowEvent[];
+  error: string | null;
+  retry_count: number;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface WorkflowProjectBinding {
+  project_id: string;
+  workflow_id: string;
+  workflow_version: string;
+  bound_at: string;
+  updated_at: string;
+}
+
+export interface ProjectWorkflowPayload {
+  project_id: string;
+  binding: WorkflowProjectBinding | null;
+  workflow: WorkflowDefinition | null;
+  runs: WorkflowRun[];
 }

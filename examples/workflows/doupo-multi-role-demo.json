@@ -1,0 +1,50 @@
+{
+  "name": "demo · 斗破苍穹多角色配音（规则画像）",
+  "version": "1.1",
+  "description": "完整导入 input/斗破苍穹测试.txt，识别角色和旁白，按角色生成音频，处理节目响度并合并导出。未明确归属的对白保留为未指定说话人。",
+  "inputs": [{"name": "project_id", "label": "项目 ID", "type": "string", "default": "demo"}],
+  "nodes": [
+    {
+      "node_id": "source", "node_type": "text.import", "title": "导入文本",
+      "position": {"x": 30, "y": 90},
+      "inputs": {"project_id": "$input.project_id"},
+      "config": {"file_path": "input/斗破苍穹测试.txt", "file_name": "斗破苍穹测试.txt", "port_language": "zh"}
+    },
+    {
+      "node_id": "analysis", "node_type": "voice.character_analysis", "title": "识别角色与对白",
+      "position": {"x": 320, "y": 90},
+      "config": {"port_language": "zh", "profile_mode": "rules", "speaker_names": ["萧炎", "萧薰儿", "萧战", "萧媚", "萧宁", "萧玉", "纳兰嫣然", "纳兰肃", "葛叶", "药老"]}
+    },
+    {
+      "node_id": "multi_role", "node_type": "voice.multi_role_fast_render", "title": "多角色逐句配音",
+      "position": {"x": 610, "y": 90},
+      "config": {
+        "port_language": "zh", "fast_speed": 1.0, "fast_rvc_enabled": false,
+        "voice_map": {"旁白": "gunian", "萧炎": "bazong", "萧薰儿": "suyingxue", "薰儿": "suyingxue", "熏儿": "suyingxue", "萧战": "fushiyu", "萧媚": "bingjiao", "萧宁": "bazong", "萧玉": "suyingxue", "纳兰嫣然": "bingjiao", "纳兰肃": "fushiyu", "葛叶": "fushiyu", "药老": "fushiyu", "未指定说话人": "fushiyu"}
+      }
+    },
+    {
+      "node_id": "loudness", "node_type": "audio.loudness", "title": "统一节目响度",
+      "position": {"x": 900, "y": 90}, "config": {"port_language": "zh"}
+    },
+    {
+      "node_id": "merge", "node_type": "audio.merge", "title": "合并多角色音频",
+      "position": {"x": 1190, "y": 90}, "inputs": {"route": "fast"}, "config": {"port_language": "zh"}
+    }
+  ],
+  "edges": [
+    {"edge_id": "source-analysis", "source_node": "source", "source_port": "text", "target_node": "analysis", "target_port": "text"},
+    {"edge_id": "analysis-render", "source_node": "analysis", "source_port": "segments", "target_node": "multi_role", "target_port": "segments"},
+    {"edge_id": "source-render-project", "source_node": "source", "source_port": "project_id", "target_node": "multi_role", "target_port": "project_id"},
+    {"edge_id": "render-loudness", "source_node": "multi_role", "source_port": "job_ids", "target_node": "loudness", "target_port": "job_ids"},
+    {"edge_id": "source-loudness-project", "source_node": "source", "source_port": "project_id", "target_node": "loudness", "target_port": "project_id"},
+    {"edge_id": "loudness-merge", "source_node": "loudness", "source_port": "job_ids", "target_node": "merge", "target_port": "job_ids"},
+    {"edge_id": "source-merge-project", "source_node": "source", "source_port": "project_id", "target_node": "merge", "target_port": "project_id"}
+  ],
+  "outputs": [
+    {"name": "audio_url", "type": "string", "source_node": "merge", "source_port": "audio_url"},
+    {"name": "speakers", "type": "json", "source_node": "multi_role", "source_port": "speakers"},
+    {"name": "character_count", "type": "number", "source_node": "analysis", "source_port": "character_count"},
+    {"name": "source_name", "type": "string", "source_node": "source", "source_port": "source_name"}
+  ]
+}

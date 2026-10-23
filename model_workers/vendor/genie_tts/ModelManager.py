@@ -1,0 +1,369 @@
+"""
+不再新建 .bin 文件。
+修改后内存: 6448 MB
+修改前内存: 5952 MB
+"""
+
+import gc
+import logging
+import os
+from dataclasses import dataclass
+from typing import Optional, List, Dict, Tuple
+
+import numpy as np
+import onnxruntime
+from onnxruntime import InferenceSession
+from tokenizers import Tokenizer
+
+from .Core.Resources import (HUBERT_MODEL_DIR, SV_MODEL, ROBERTA_MODEL_DIR)
+from .Utils.Utils import LRUCacheDict
+
+onnxruntime.set_default_logger_severity(3)
+logger = logging.getLogger(__name__)
+
+
+class GSVModelFile:
+    T2S_ENCODER_FP32: str = 't2s_encoder_fp32.onnx'
+
+    T2S_FIRST_STAGE_DECODER_FP32: str = 't2s_first_stage_decoder_fp32.onnx'
+    T2S_FIRST_STAGE_DECODER_FP16: str = 't2s_first_stage_decoder_fp16.onnx'
+    T2S_STAGE_DECODER_FP32: str = 't2s_stage_decoder_fp32.onnx'
+    T2S_STAGE_DECODER_FP16: str = 't2s_stage_decoder_fp16.onnx'
+    T2S_DECODER_WEIGHT_FP16: str = 't2s_shared_fp16.bin'
+
+    VITS_FP32: str = 'vits_fp32.onnx'
+    VITS_WEIGHT_FP16: str = 'vits_fp16.bin'
+
+    PROMPT_ENCODER: str = 'prompt_encoder_fp32.onnx'
+    PROMPT_ENCODER_WEIGHT_FP16: str = 'prompt_encoder_fp16.bin'
+
+    HUBERT_MODEL = os.path.join(HUBERT_MODEL_DIR, "chinese-hubert-base.onnx")
+    HUBERT_MODEL_WEIGHT_FP16 = os.path.join(HUBERT_MODEL_DIR, "chinese-hubert-base_weights_fp16.bin")
+
+    ROBERTA_MODEL = os.path.join(ROBERTA_MODEL_DIR, 'RoBERTa.onnx')
+    ROBERTA_TOKENIZER = os.path.join(ROBERTA_MODEL_DIR, 'roberta_tokenizer')
+
+
+@dataclass
+class GSVModel:
+    LANGUAGE: str
+    T2S_ENCODER: InferenceSession
+    T2S_FIRST_STAGE_DECODER: InferenceSession
+    T2S_STAGE_DECODER: InferenceSession
+    VITS: InferenceSession
+    PROMPT_ENCODER: Optional[InferenceSession] = None
+    PROMPT_ENCODER_PATH: Optional[str] = None
+
+
+# 去重候选目录，同时保留搜索顺序，避免重复扫描相同路径。
+def _unique_paths(paths: List[str]) -> List[str]:
+    result: List[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        normalized = os.path.normpath(path)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(normalized)
+    return result
+
+
+# 原实现假设 RoBERTa 资源始终采用固定本地目录布局
+# （RoBERTa.onnx + roberta_tokenizer/tokenizer.json）。
+# 这里保留这套旧布局优先级，同时补充对 Hugging Face ONNX 目录布局的搜索，
+# 这样既不破坏旧用法，也能兼容新的导出结果。
+def candidate_roberta_dirs(base_dir: str = ROBERTA_MODEL_DIR) -> List[str]:
+    dirs = [base_dir]
+    genie_data_dir = os.path.dirname(os.path.normpath(base_dir))
+    if os.path.isdir(genie_data_dir):
+        for entry in os.scandir(genie_data_dir):
+            if entry.is_dir() and "roberta" in entry.name.lower():
+                dirs.append(entry.path)
+    return _unique_paths(dirs)
+
+
+# 同时解析模型文件和 tokenizer 路径。
+# 这是因为较新的 ONNX 导出结果可能使用 model.onnx / model_fp16.onnx
+# + tokenizer.json，而不是原先写死的 RoBERTa.onnx + roberta_tokenizer 布局。
+def resolve_roberta_assets(base_dir: str = ROBERTA_MODEL_DIR) -> Tuple[Optional[str], Optional[str]]:
+    model_names = ("RoBERTa.onnx", "model.onnx", "model_fp16.onnx")
+    tokenizer_rel_paths = (
+        os.path.join("roberta_tokenizer", "tokenizer.json"),
+        "tokenizer.json",
+    )
+
+    for directory in candidate_roberta_dirs(base_dir):
+        model_path = next(
+            (os.path.join(directory, name) for name in model_names if os.path.isfile(os.path.join(directory, name))),
+            None,
+        )
+        if model_path is None and os.path.isdir(directory):
+            fallback_onnx = sorted(
+                entry.path
+                for entry in os.scandir(directory)
+                if entry.is_file() and entry.name.lower().endswith(".onnx")
+            )
+            if fallback_onnx:
+                model_path = fallback_onnx[0]
+        tokenizer_path = next(
+            (
+                os.path.join(directory, rel_path)
+                for rel_path in tokenizer_rel_paths
+                if os.path.isfile(os.path.join(directory, rel_path))
+            ),
+            None,
+        )
+        if model_path and tokenizer_path:
+            return model_path, tokenizer_path
+
+    return None, None
+
+
+def load_session_with_fp16_conversion(
+        onnx_path: str,
+        fp16_bin_path: str,
+        providers: List[str],
+        sess_options: Optional[onnxruntime.SessionOptions] = None
+) -> InferenceSession:
+    """Materialize the FP32 external data expected by the ONNX graph."""
+    if not os.path.exists(onnx_path):
+        raise FileNotFoundError(f"ONNX Model not found: {onnx_path}")
+    if not os.path.exists(fp16_bin_path):
+        raise FileNotFoundError(f"FP16 Weight file not found: {fp16_bin_path}")
+
+    target_names = {
+        "chinese-hubert-base.onnx": "chinese-hubert-base_weights.bin",
+        "prompt_encoder_fp32.onnx": "prompt_encoder_fp32.bin",
+        "t2s_first_stage_decoder_fp32.onnx": "t2s_shared_fp32.bin",
+        "t2s_stage_decoder_fp32.onnx": "t2s_shared_fp32.bin",
+        "vits_fp32.onnx": "vits_fp32.bin",
+    }
+    target_name = target_names.get(os.path.basename(onnx_path))
+    if target_name is None:
+        raise RuntimeError(f"Unsupported Genie external model: {onnx_path}")
+    target_path = os.path.join(os.path.dirname(os.path.abspath(onnx_path)), target_name)
+    if not os.path.isfile(target_path):
+        temporary_path = f"{target_path}.tmp"
+        np.asarray(np.fromfile(fp16_bin_path, dtype=np.float16), dtype=np.float32).tofile(temporary_path)
+        os.replace(temporary_path, target_path)
+    try:
+        return InferenceSession(onnx_path, providers=providers, sess_options=sess_options)
+    except Exception as error:
+        logger.error(f"Failed to load model {os.path.basename(onnx_path)}: {error}")
+        raise
+
+
+class ModelManager:
+    def __init__(self):
+        capacity_str = os.getenv('Max_Cached_Character_Models', '3')
+        self.character_to_model: Dict[str, Dict[str, Optional[InferenceSession]]] = LRUCacheDict(
+            capacity=int(capacity_str)
+        )
+        self.character_to_language: Dict[str, str] = {}
+        self.character_model_paths: Dict[str, str] = {}
+        self.providers = ["CPUExecutionProvider"]
+
+        self.cn_hubert: Optional[InferenceSession] = None
+        self.speaker_verification_model: Optional[InferenceSession] = None
+        self.roberta_model: Optional[InferenceSession] = None
+        self.roberta_tokenizer: Optional[Tokenizer] = None
+
+    def load_roberta_model(self) -> bool:
+        # 将原来的“固定路径加载”替换为“先解析资源路径再加载”。
+        # 这样历史本地目录布局和 Hugging Face ONNX 布局都能正常工作。
+        if self.roberta_model is not None and self.roberta_tokenizer is not None:
+            return True
+
+        model_path, tokenizer_path = resolve_roberta_assets()
+        if not model_path or not tokenizer_path:
+            logger.warning(
+                "RoBERTa assets not found. Looked under: %s",
+                ", ".join(candidate_roberta_dirs()),
+            )
+            return False
+
+        try:
+            self.roberta_model = onnxruntime.InferenceSession(
+                model_path,
+                providers=self.providers,
+            )
+            self.roberta_tokenizer = Tokenizer.from_file(tokenizer_path)
+            logger.info("Successfully loaded RoBERTa model from %s", model_path)
+            return True
+        except Exception as e:
+            logger.error(
+                f"Error: Failed to load ONNX model '{model_path}'.\n"
+                f"Details: {e}"
+            )
+        return False
+
+    def load_sv_model(self, model_path: str = SV_MODEL) -> bool:
+        if self.speaker_verification_model is not None:
+            return True
+        try:
+            self.speaker_verification_model = onnxruntime.InferenceSession(
+                model_path,
+                providers=self.providers,
+            )
+            logger.info(f"Successfully loaded Speaker Verification model.")
+            return True
+        except Exception as e:
+            logger.error(
+                f"Error: Failed to load ONNX model '{SV_MODEL}'.\n"
+                f"Details: {e}"
+            )
+        return False
+
+    def load_cn_hubert(self, model_path: str = GSVModelFile.HUBERT_MODEL) -> bool:
+        if self.cn_hubert is not None:
+            return True
+        try:
+            # Hubert 也应用内存转换逻辑
+            if model_path == GSVModelFile.HUBERT_MODEL and os.path.exists(GSVModelFile.HUBERT_MODEL_WEIGHT_FP16):
+                self.cn_hubert = load_session_with_fp16_conversion(
+                    model_path,
+                    GSVModelFile.HUBERT_MODEL_WEIGHT_FP16,
+                    self.providers
+                )
+            else:
+                self.cn_hubert = onnxruntime.InferenceSession(
+                    model_path,
+                    providers=self.providers,
+                )
+            logger.info("Successfully loaded CN_HuBERT model.")
+            return True
+        except Exception as e:
+            logger.error(
+                f"Error: Failed to load ONNX model '{GSVModelFile.HUBERT_MODEL}'.\n"
+                f"Details: {e}"
+            )
+        return False
+
+    def get(self, character_name: str) -> Optional[GSVModel]:
+        character_name = character_name.lower()
+        language = self.character_to_language.get(character_name, 'Japanese')
+        if character_name in self.character_to_model:
+            model_map: dict = self.character_to_model[character_name]
+            # 简化获取逻辑
+            t2s_first_stage_decoder = model_map.get(GSVModelFile.T2S_FIRST_STAGE_DECODER_FP32) or \
+                                      model_map.get(GSVModelFile.T2S_FIRST_STAGE_DECODER_FP16)
+            t2s_stage_decoder = model_map.get(GSVModelFile.T2S_STAGE_DECODER_FP32) or \
+                                model_map.get(GSVModelFile.T2S_STAGE_DECODER_FP16)
+            prompt_encoder_path = os.path.join(self.character_model_paths[character_name], GSVModelFile.PROMPT_ENCODER)
+
+            return GSVModel(
+                LANGUAGE=language,
+                T2S_ENCODER=model_map[GSVModelFile.T2S_ENCODER_FP32],
+                T2S_FIRST_STAGE_DECODER=t2s_first_stage_decoder,
+                T2S_STAGE_DECODER=t2s_stage_decoder,
+                VITS=model_map[GSVModelFile.VITS_FP32],
+                PROMPT_ENCODER=model_map[GSVModelFile.PROMPT_ENCODER],
+                PROMPT_ENCODER_PATH=prompt_encoder_path,
+            )
+        if character_name in self.character_model_paths:
+            model_dir = self.character_model_paths[character_name]
+            if self.load_character(character_name, model_dir, language=language):
+                return self.get(character_name)
+            else:
+                del self.character_model_paths[character_name]
+                return None
+        return None
+
+    def has_character(self, character_name: str) -> bool:
+        character_name = character_name.lower()
+        return character_name in self.character_model_paths
+
+    def load_character(
+            self,
+            character_name: str,
+            model_dir: str,
+            language: str,
+    ) -> bool:
+        """
+        加载角色模型，如果需要，在内存中动态转换 FP16 权重。
+        """
+        character_name = character_name.lower()
+        if character_name in self.character_to_model:
+            _ = self.character_to_model[character_name]
+            return True
+
+        model_dict: Dict[str, Optional[InferenceSession]] = {}
+
+        # 定义 ONNX 文件到 FP16 Bin 文件的映射关系
+        onnx_to_fp16_map = {
+            GSVModelFile.T2S_FIRST_STAGE_DECODER_FP32: GSVModelFile.T2S_DECODER_WEIGHT_FP16,
+            GSVModelFile.T2S_STAGE_DECODER_FP32: GSVModelFile.T2S_DECODER_WEIGHT_FP16,
+            GSVModelFile.VITS_FP32: GSVModelFile.VITS_WEIGHT_FP16,
+            GSVModelFile.PROMPT_ENCODER: GSVModelFile.PROMPT_ENCODER_WEIGHT_FP16
+        }
+
+        # 确定需要加载的模型列表
+        model_files_to_load = [
+            GSVModelFile.T2S_ENCODER_FP32,
+            GSVModelFile.VITS_FP32,
+            GSVModelFile.PROMPT_ENCODER,
+        ]
+
+        fp32_decoders = [GSVModelFile.T2S_FIRST_STAGE_DECODER_FP32, GSVModelFile.T2S_STAGE_DECODER_FP32]
+        model_files_to_load.extend(fp32_decoders)
+
+        try:
+            for model_file in model_files_to_load:
+                model_path = os.path.normpath(os.path.join(model_dir, model_file))
+
+                # 设置 Session Options
+                sess_options = onnxruntime.SessionOptions()
+                sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+                if os.path.exists(model_path):
+                    fp16_bin_name = onnx_to_fp16_map.get(model_file)
+                    fp16_bin_path = os.path.join(model_dir, fp16_bin_name) if fp16_bin_name else None
+
+                    if fp16_bin_path and os.path.exists(fp16_bin_path):
+                        model_dict[model_file] = load_session_with_fp16_conversion(
+                            model_path, fp16_bin_path, self.providers, sess_options
+                        )
+                    else:
+                        model_dict[model_file] = onnxruntime.InferenceSession(
+                            model_path,
+                            providers=self.providers,
+                            sess_options=sess_options,
+                        )
+                elif model_file == GSVModelFile.PROMPT_ENCODER:
+                    model_dict[model_file] = None
+                else:
+                    raise FileNotFoundError(f'文件 {model_path} 不存在！')
+
+            # 日志信息
+            is_v2pp = model_dict[GSVModelFile.PROMPT_ENCODER] is not None
+            logger.info(
+                f"Character {character_name.capitalize()} loaded successfully.\n"
+                f"- Model Path: {model_dir}\n"
+                f"- Model Type: {'V2ProPlus' if is_v2pp else 'V2'}"
+            )
+
+            self.character_to_model[character_name] = model_dict
+            self.character_to_language[character_name] = language
+            self.character_model_paths[character_name] = model_dir
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Error: Failed to load ONNX model '{model_dir}'.\n"
+                f"Details: {e}"
+            )
+            return False
+
+    def remove_all_character(self) -> None:
+        self.character_to_model.clear()
+        gc.collect()
+
+    def remove_character(self, character_name: str) -> None:
+        character_name = character_name.lower()
+        if character_name in self.character_to_model:
+            del self.character_to_model[character_name]
+            gc.collect()
+            logger.info(f"Character {character_name.capitalize()} removed successfully.")
+
+
+model_manager: ModelManager = ModelManager()

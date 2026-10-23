@@ -75,3 +75,26 @@ def test_rolling_loudness_history_is_isolated_per_project(tmp_path: Path) -> Non
 
     assert processor.rolling_gain_db(policy, "project-a") == 4.0
     assert processor.rolling_gain_db(policy, "project-b") == 0.0
+
+
+def test_program_normalization_preserves_rate_and_duration_with_high_peaks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ffmpeg = Path(__file__).resolve().parents[2] / "tools" / "ffmpeg" / "bin" / "ffmpeg.exe"
+    monkeypatch.setenv("ZW_VOICE_FFMPEG_PATH", str(ffmpeg))
+    source, output = tmp_path / "peaky.wav", tmp_path / "program.wav"
+    rate = 16_000
+    samples = array("h", (round(1600 * math.sin(2 * math.pi * 440 * frame / rate)) for frame in range(rate * 5)))
+    for frame in (rate, rate * 2, rate * 3):
+        samples[frame] = 31_000
+    with wave.open(str(source), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(rate)
+        audio.writeframes(samples.tobytes())
+    metrics = LoudnessProcessor(tmp_path).normalize_program_file(source, output, ProgramLoudnessPolicy())
+    assert metrics.status == "corrected"
+    assert metrics.final_program_pass
+    with wave.open(str(output), "rb") as audio:
+        assert audio.getframerate() == rate
+        assert audio.getnchannels() == 1
+        assert audio.getsampwidth() == 2
+        assert audio.getnframes() / audio.getframerate() == pytest.approx(5.0, abs=0.01)

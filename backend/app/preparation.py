@@ -57,6 +57,7 @@ from .voice_analysis import (
     DEFAULT_CLOUD_DIRECTOR_BATCH_SIZE,
     DEFAULT_CLOUD_PARALLELISM,
     RuleBasedVoiceAnalyzer,
+    ReferenceTextDraft,
     VoiceAnalysisError,
     VoiceAnalysisConfigurationUpdate,
     VoiceAnalysisConfigurationView,
@@ -724,6 +725,19 @@ class PreparationService:
 
     def preview_voice_profile(self, evidence_pack: CharacterEvidencePack) -> CharacterVoiceProfile:
         return self.voice_analyzer.analyze(evidence_pack)
+
+    def preview_reference_text(
+        self,
+        evidence_pack: CharacterEvidencePack,
+        voice_prompt: str,
+    ) -> ReferenceTextDraft:
+        """Generate a bounded neutral reference through the configured analyzer.
+
+        This is the shared seam for the workflow adapter and the preparation
+        UI. The analyzer owns model/rules selection; callers only receive a
+        reviewable draft and never mutate the project's accepted references.
+        """
+        return self.voice_analyzer.generate_reference_text(evidence_pack, voice_prompt)
 
     def list_sources(self) -> list[SourceSummary]:
         sources: list[SourceSummary] = []

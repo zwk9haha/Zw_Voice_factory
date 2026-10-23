@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import wave
 from collections import deque
 from pathlib import Path
 
@@ -150,6 +151,8 @@ class LoudnessProcessor:
             f"measured_LRA={source_metrics['lra']}:measured_thresh={source_metrics['threshold']}:"
             f"offset={source_metrics['target_offset']}:linear=true:print_format=summary"
         )
+        with wave.open(str(source), "rb") as program_source:
+            sample_rate = program_source.getframerate()
         self._run(
             executable,
             [
@@ -163,6 +166,8 @@ class LoudnessProcessor:
                 filter_value,
                 "-c:a",
                 "pcm_s16le",
+                "-ar",
+                str(sample_rate),
                 str(target),
             ],
         )

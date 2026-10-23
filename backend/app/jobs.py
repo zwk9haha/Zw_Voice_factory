@@ -28,7 +28,7 @@ from .loudness import LoudnessMetrics, LoudnessProcessingError, LoudnessProcesso
 from .production import QualityModelId, QualityRenderOptions, quality_model_spec
 from .rvc_contracts import RvcApplyResult, RvcApplyStatus
 
-JobKind = Literal["voxcpm_reference", "emotion_variant", "quality_render", "fast_render"]
+JobKind = Literal["voxcpm_reference", "emotion_variant", "catalog_reference", "catalog_derivative", "quality_render", "fast_render"]
 JobStatus = Literal["queued", "running", "complete", "failed", "cancelled"]
 STREAM_FRAME_METADATA = 1
 STREAM_FRAME_AUDIO = 2
@@ -93,6 +93,11 @@ class JobRequest(BaseModel):
     fast_voice_id: str = Field(default="suyingxue", max_length=80)
     fast_speed: float = Field(default=1.0, ge=0.5, le=2.0)
     fast_rvc_enabled: bool = True
+    quality_rvc_enabled: bool = True
+    catalog_asset_id: str | None = Field(default=None, max_length=120)
+    catalog_version_id: str | None = Field(default=None, max_length=120)
+    voxcpm_cfg_value: float = Field(default=2.0, ge=0.1, le=10)
+    voxcpm_inference_timesteps: int = Field(default=10, ge=1, le=100)
 
 
 class JobRecord(BaseModel):
@@ -112,6 +117,11 @@ class JobRecord(BaseModel):
     fast_voice_id: str | None = None
     fast_speed: float | None = None
     fast_rvc_enabled: bool | None = None
+    quality_rvc_enabled: bool | None = None
+    catalog_asset_id: str | None = None
+    catalog_version_id: str | None = None
+    voxcpm_cfg_value: float | None = None
+    voxcpm_inference_timesteps: int | None = None
     streaming: bool = False
     loudness_policy: ProgramLoudnessPolicy = Field(default_factory=ProgramLoudnessPolicy)
     loudness_metrics: LoudnessMetrics | None = None
@@ -178,6 +188,15 @@ class ModelGateway:
     def generate_voxcpm(self, text: str, voice_prompt: str) -> bytes:
         raise NotImplementedError
 
+    def generate_voxcpm_with_options(
+        self,
+        text: str,
+        voice_prompt: str,
+        cfg_value: float,
+        inference_timesteps: int,
+    ) -> bytes:
+        return self.generate_voxcpm(text, voice_prompt)
+
     def generate_fast(self, text: str, voice_id: str, speed: float = 1.0) -> bytes:
         raise NotImplementedError
 
@@ -213,6 +232,7 @@ class HttpModelGateway(ModelGateway):
         self.fast_tts_url = os.getenv("ZW_VOICE_FAST_TTS_URL", "http://127.0.0.1:9883").rstrip("/")
         self.gpt_sovits_url = os.getenv("ZW_VOICE_GPT_SOVITS_URL", "http://127.0.0.1:9880").rstrip("/")
         self.indextts_url = os.getenv("ZW_VOICE_INDEXTTS_URL", "http://127.0.0.1:9882").rstrip("/")
+        self.genie_url = os.getenv("ZW_VOICE_GENIE_URL", "http://127.0.0.1:9884").rstrip("/")
         self._active_gpt_sovits_model: QualityModelId = "gpt_sovits_v2"
         self._quality_model_lock = threading.Lock()
 
@@ -221,6 +241,24 @@ class HttpModelGateway(ModelGateway):
             f"{self.voxcpm_url}/generate",
             {"text": text, "voice_prompt": voice_prompt},
             "VoxCPM2",
+        )
+
+    def generate_voxcpm_with_options(
+        self,
+        text: str,
+        voice_prompt: str,
+        cfg_value: float,
+        inference_timesteps: int,
+    ) -> bytes:
+        return self._post_audio(
+            f"{self.voxcpm_url}/generate",
+            {
+                "text": text,
+                "voice_prompt": voice_prompt,
+                "cfg_value": cfg_value,
+                "inference_timesteps": inference_timesteps,
+            },
+            "VoxCPM2 音色库",
         )
 
     def generate_fast(self, text: str, voice_id: str, speed: float = 1.0) -> bytes:
@@ -365,6 +403,7 @@ class HttpModelGateway(ModelGateway):
                 "fast_tts": self._probe(self.fast_tts_url, "/health"),
                 "gpt_sovits": self._probe(self.gpt_sovits_url, "/openapi.json"),
                 "indextts2": self._probe(self.indextts_url, "/health"),
+                "genie_tts": self._probe(self.genie_url, "/health"),
             },
         }
 
@@ -494,6 +533,7 @@ class HttpModelGateway(ModelGateway):
 
 ReferenceEventHandler = Callable[[str, str, str, JobStatus, str | None, str | None], None]
 EmotionEventHandler = Callable[[str, str, str, JobStatus, str | None, str | None], None]
+CatalogEventHandler = Callable[[str, str, str, JobStatus, str | None, str | None], None]
 QualityStabilityHandler = Callable[[str, str | None, str | None, bytes], RvcApplyResult]
 FastRouteHandler = Callable[[str, str | None, str | None, bytes], RvcApplyResult]
 
@@ -505,6 +545,7 @@ class JobService:
         gateway: ModelGateway,
         reference_event_handler: ReferenceEventHandler | None = None,
         emotion_event_handler: EmotionEventHandler | None = None,
+        catalog_event_handler: CatalogEventHandler | None = None,
         quality_stability_handler: QualityStabilityHandler | None = None,
         fast_route_handler: FastRouteHandler | None = None,
         gpu_lock: threading.RLock | None = None,
@@ -516,6 +557,7 @@ class JobService:
         self.gateway = gateway
         self.reference_event_handler = reference_event_handler
         self.emotion_event_handler = emotion_event_handler
+        self.catalog_event_handler = catalog_event_handler
         self.quality_stability_handler = quality_stability_handler
         self.fast_route_handler = fast_route_handler
         self.gpu_lock = gpu_lock
@@ -593,6 +635,10 @@ class JobService:
             raise JobProblem(422, "项目参考任务必须同时提供 project_id 和 reference_id")
         if request.kind == "emotion_variant" and (not request.project_id or not request.variant_id):
             raise JobProblem(422, "情绪派生任务必须同时提供 project_id 和 variant_id")
+        if request.kind in {"catalog_reference", "catalog_derivative"} and (
+            not request.catalog_asset_id or not request.catalog_version_id
+        ):
+            raise JobProblem(422, "音色库任务必须提供音色资产和版本 ID")
         reference_path: Path | None = None
         if request.kind == "quality_render":
             if not request.reference_audio_url:
@@ -634,6 +680,11 @@ class JobService:
             fast_voice_id=request.fast_voice_id if request.kind == "fast_render" else None,
             fast_speed=request.fast_speed if request.kind == "fast_render" else None,
             fast_rvc_enabled=request.fast_rvc_enabled if request.kind == "fast_render" else None,
+            quality_rvc_enabled=request.quality_rvc_enabled if request.kind == "quality_render" else None,
+            catalog_asset_id=request.catalog_asset_id if request.kind in {"catalog_reference", "catalog_derivative"} else None,
+            catalog_version_id=request.catalog_version_id if request.kind in {"catalog_reference", "catalog_derivative"} else None,
+            voxcpm_cfg_value=request.voxcpm_cfg_value if request.kind in {"catalog_reference", "catalog_derivative"} else None,
+            voxcpm_inference_timesteps=request.voxcpm_inference_timesteps if request.kind in {"catalog_reference", "catalog_derivative"} else None,
             streaming=streaming,
             loudness_policy=loudness_policy,
             created_at=now,
@@ -811,8 +862,14 @@ class JobService:
         return updated_records
 
     def reprocess_quality_rvc(self, project_id: str, job_ids: list[str]) -> list[JobRecord]:
-        if self.quality_stability_handler is None:
-            raise JobProblem(409, "RVC 质量稳定层不可用")
+        return self.reprocess_rvc(project_id, job_ids, "quality")
+
+    def reprocess_rvc(self, project_id: str, job_ids: list[str], route: Literal["quality", "fast"]) -> list[JobRecord]:
+        if route not in {"quality", "fast"}:
+            raise JobProblem(422, "RVC 路线只能是 quality 或 fast")
+        handler = self.quality_stability_handler if route == "quality" else self.fast_route_handler
+        if handler is None:
+            raise JobProblem(409, "RVC 质量稳定层不可用" if route == "quality" else "RVC 极速身份层不可用")
         unique_job_ids = list(dict.fromkeys(job_ids))
         with self._lock:
             records = [self._jobs.get(job_id) for job_id in unique_job_ids]
@@ -821,8 +878,9 @@ class JobService:
         completed = [record for record in records if record is not None]
         if any(record.project_id != project_id for record in completed):
             raise JobProblem(409, "不能处理其他项目的音频缓存")
-        if any(record.kind != "quality_render" for record in completed):
-            raise JobProblem(409, "RVC 质量稳定层只能处理质量路线缓存")
+        expected_kind = "quality_render" if route == "quality" else "fast_render"
+        if any(record.kind != expected_kind for record in completed):
+            raise JobProblem(409, "RVC 质量稳定层只能处理质量路线缓存" if route == "quality" else "RVC 极速身份层只能处理极速路线缓存")
         if any(record.status != "complete" for record in completed):
             raise JobProblem(409, "只能重新处理已完成的质量音频缓存")
 
@@ -833,7 +891,7 @@ class JobService:
             if not base_output.is_file():
                 raise JobProblem(404, f"基础渲染缓存不存在：{record.job_id}")
             base_audio = base_output.read_bytes()
-            result = self.quality_stability_handler(
+            result = handler(
                 project_id,
                 record.character_id,
                 record.reference_id,
@@ -1197,6 +1255,8 @@ class JobService:
             request, reference_path = queued_request
             if request.kind in {"voxcpm_reference", "emotion_variant"}:
                 service_name = "VoxCPM2"
+            elif request.kind in {"catalog_reference", "catalog_derivative"}:
+                service_name = "VoxCPM2 音色库高质量生成"
             elif request.kind == "fast_render":
                 service_name = "轻量 TTS"
             else:
@@ -1208,6 +1268,13 @@ class JobService:
             with self.gpu_lock if self.gpu_lock is not None else nullcontext():
                 if request.kind in {"voxcpm_reference", "emotion_variant"}:
                     audio = self.gateway.generate_voxcpm(request.text, request.voice_prompt)
+                elif request.kind in {"catalog_reference", "catalog_derivative"}:
+                    audio = self.gateway.generate_voxcpm_with_options(
+                        request.text,
+                        request.voice_prompt,
+                        request.voxcpm_cfg_value,
+                        request.voxcpm_inference_timesteps,
+                    )
                 elif request.kind == "fast_render":
                     audio = self.gateway.generate_fast(request.text, request.fast_voice_id, request.fast_speed)
                 else:
@@ -1229,7 +1296,7 @@ class JobService:
                     base_audio,
                 )
                 audio = rvc_result.audio
-            elif request.kind == "quality_render" and self.quality_stability_handler is not None and request.project_id:
+            elif request.kind == "quality_render" and request.quality_rvc_enabled and self.quality_stability_handler is not None and request.project_id:
                 rvc_result = self.quality_stability_handler(
                     request.project_id,
                     request.character_id,
@@ -1339,6 +1406,8 @@ class JobService:
             "/media/voice-samples/": self.workspace_root / "assets" / "voice_samples",
             "/media/outputs/audio/": self.workspace_root / "outputs" / "audio",
             "/media/outputs/projects/": self.workspace_root / "outputs" / "projects",
+            "/media/outputs/voice-catalog/": self.workspace_root / "outputs" / "voice_catalog",
+            "/media/outputs/platform/": self.workspace_root / "outputs" / "platform",
         }
         for prefix, root in prefix_map.items():
             if decoded.startswith(prefix):
@@ -1383,6 +1452,20 @@ class JobService:
             self.emotion_event_handler(
                 request.project_id,
                 request.variant_id,
+                job_id,
+                status,
+                output_url,
+                error,
+            )
+        if (
+            request.kind in {"catalog_reference", "catalog_derivative"}
+            and request.catalog_asset_id
+            and request.catalog_version_id
+            and self.catalog_event_handler
+        ):
+            self.catalog_event_handler(
+                request.catalog_asset_id,
+                request.catalog_version_id,
                 job_id,
                 status,
                 output_url,

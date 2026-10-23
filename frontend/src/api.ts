@@ -1,4 +1,4 @@
-import type { AnalysisActivity, AudioJob, AudioJobKind, AudioJobRequest, CancelledQualityJobs, ContinuousProductionRun, ContinuousProductionSettings, DeletedQualityCache, FastRouteWorkspace, LongFormAnalysisSettingsUpdate, MergedAudio, PreparationAction, PreparationPreview, ProductionSettings, ProgramLoudnessPolicy, ProjectRevisionWorkspace, QualityModelId, QualityRenderOptions, RvcBenchmarkReport, RvcInferenceProfile, RvcPreviewResult, RvcPreviewSource, RvcRoute, RvcSettingsUpdate, RvcTrainingJob, RvcTrainingOptions, RvcTrainingPurpose, RvcWorkspace, RuntimeLogEntry, SourceSummary, SystemResources, VoiceAnalysisConfiguration, VoiceAnalysisConfigurationUpdate, VoiceAnalysisModelCatalog, VoiceAnalysisModelCatalogRequest, VoiceAnalysisStatus, VoiceResourceMatch, WorkspacePayload } from "./types";
+import type { AnalysisActivity, AudioJob, AudioJobKind, AudioJobRequest, CancelledQualityJobs, ContinuousProductionRun, ContinuousProductionSettings, DeletedQualityCache, FastRouteWorkspace, GenieCompareResult, GenieVoiceOption, LongFormAnalysisSettingsUpdate, MergedAudio, PlatformProject, PlatformProjectType, PlatformProjectWorkspace, PreparationAction, PreparationPreview, ProductionSettings, ProgramLoudnessPolicy, ProjectRevisionWorkspace, ProjectVoiceDecision, ProjectVoiceSnapshot, ProjectWorkflowPayload, QualityModelId, QualityRenderOptions, RvcBenchmarkReport, RvcInferenceProfile, RvcPreviewResult, RvcPreviewSource, RvcRoute, RvcSettingsUpdate, RvcTrainingJob, RvcTrainingOptions, RvcTrainingPurpose, RvcWorkspace, RuntimeLogEntry, SourceSummary, SystemResources, VoiceAnalysisConfiguration, VoiceAnalysisConfigurationUpdate, VoiceAnalysisModelCatalog, VoiceAnalysisModelCatalogRequest, VoiceAnalysisStatus, VoiceCatalogAsset, VoiceCatalogPayload, VoiceResourceMatch, VoiceTask, WorkflowDefinition, WorkflowGraphValidation, WorkflowNodeManifest, WorkflowRun, WorkspacePayload } from "./types";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -17,6 +17,203 @@ async function responseJson<T>(response: Response): Promise<T> {
 export async function fetchWorkspace(): Promise<WorkspacePayload> {
   const response = await fetch("/api/workspace");
   return responseJson<WorkspacePayload>(response);
+}
+
+export async function fetchWorkflowNodeTypes(): Promise<WorkflowNodeManifest[]> {
+  return responseJson<WorkflowNodeManifest[]>(await fetch("/api/workflows/node-types"));
+}
+
+type WorkflowDraftPayload = Pick<WorkflowDefinition, "name" | "version" | "description" | "nodes" | "inputs" | "edges" | "outputs" | "allow_pause" | "allow_retry" | "allow_recovery">;
+
+export async function fetchWorkflows(): Promise<WorkflowDefinition[]> {
+  return responseJson<WorkflowDefinition[]>(await fetch("/api/workflows"));
+}
+
+export async function createWorkflow(payload: WorkflowDraftPayload): Promise<WorkflowDefinition> {
+  return responseJson<WorkflowDefinition>(await fetch("/api/workflows", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }));
+}
+
+export async function updateWorkflow(workflowId: string, payload: WorkflowDraftPayload): Promise<WorkflowDefinition> {
+  return responseJson<WorkflowDefinition>(await fetch(`/api/workflows/${encodeURIComponent(workflowId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }));
+}
+
+export async function validateWorkflow(payload: WorkflowDraftPayload): Promise<WorkflowGraphValidation> {
+  return responseJson<WorkflowGraphValidation>(await fetch("/api/workflows/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }));
+}
+
+export async function publishWorkflow(workflowId: string): Promise<WorkflowDefinition> {
+  return responseJson<WorkflowDefinition>(await fetch(`/api/workflows/${encodeURIComponent(workflowId)}/publish`, { method: "POST" }));
+}
+
+export async function createWorkflowRun(workflowId: string, input: Record<string, unknown>): Promise<WorkflowRun> {
+  return responseJson<WorkflowRun>(await fetch(`/api/workflows/${encodeURIComponent(workflowId)}/runs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ input, auto_start: true }),
+  }));
+}
+
+export async function fetchWorkflowRun(runId: string): Promise<WorkflowRun> {
+  return responseJson<WorkflowRun>(await fetch(`/api/workflows/runs/${encodeURIComponent(runId)}`));
+}
+
+export async function fetchWorkflowRuns(workflowId: string): Promise<WorkflowRun[]> {
+  return responseJson<WorkflowRun[]>(await fetch(`/api/workflows/${encodeURIComponent(workflowId)}/runs`));
+}
+
+export async function fetchProjectWorkflow(projectId: string): Promise<ProjectWorkflowPayload> {
+  return responseJson<ProjectWorkflowPayload>(await fetch(`/api/workflows/projects/${encodeURIComponent(projectId)}`));
+}
+
+export async function bindProjectWorkflow(projectId: string, workflowId: string): Promise<ProjectWorkflowPayload> {
+  return responseJson<ProjectWorkflowPayload>(await fetch(`/api/workflows/projects/${encodeURIComponent(projectId)}/binding`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workflow_id: workflowId }),
+  }));
+}
+
+export async function createProjectWorkflowRun(projectId: string, input: Record<string, unknown>): Promise<WorkflowRun> {
+  return responseJson<WorkflowRun>(await fetch(`/api/workflows/projects/${encodeURIComponent(projectId)}/runs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ input, auto_start: true }),
+  }));
+}
+
+export async function workflowRunAction(runId: string, action: "start" | "pause" | "resume" | "retry" | "cancel"): Promise<WorkflowRun> {
+  return responseJson<WorkflowRun>(await fetch(`/api/workflows/runs/${encodeURIComponent(runId)}/${action}`, { method: "POST" }));
+}
+
+export async function reviewWorkflowNode(runId: string, nodeId: string, decision: "approved" | "rejected", comment?: string): Promise<WorkflowRun> {
+  return responseJson<WorkflowRun>(await fetch(`/api/workflows/runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, comment: comment?.trim() || null }),
+  }));
+}
+
+export async function fetchPlatformProjects(): Promise<PlatformProject[]> {
+  return responseJson<PlatformProject[]>(await fetch("/api/platform/projects"));
+}
+
+export async function fetchVoiceCatalog(): Promise<VoiceCatalogPayload> {
+  return responseJson<VoiceCatalogPayload>(await fetch("/api/voice-catalog"));
+}
+
+export async function updateVoiceCatalogAsset(assetId: string, changes: Partial<Pick<VoiceCatalogAsset, "voice_prompt" | "timbre_tags" | "delivery_tags" | "voice_constraints" | "use_cases" | "reference_text" | "generation_preset_id">>): Promise<VoiceCatalogAsset> {
+  return responseJson<VoiceCatalogAsset>(await fetch(`/api/voice-catalog/assets/${encodeURIComponent(assetId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  }));
+}
+
+export async function generateVoiceCatalogAsset(assetId: string, request: { reference_text?: string; voice_prompt?: string; preset_id?: string }): Promise<VoiceCatalogAsset> {
+  return responseJson<VoiceCatalogAsset>(await fetch(`/api/voice-catalog/assets/${encodeURIComponent(assetId)}/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  }));
+}
+
+export async function deriveVoiceCatalogAsset(assetId: string, request: { parent_version_id: string; variant_name: string; description: string; emotion?: string; intensity: number; reference_text?: string; preset_id?: string }): Promise<VoiceCatalogAsset> {
+  return responseJson<VoiceCatalogAsset>(await fetch(`/api/voice-catalog/assets/${encodeURIComponent(assetId)}/derive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  }));
+}
+
+export async function activateVoiceCatalogVersion(assetId: string, versionId: string): Promise<VoiceCatalogAsset> {
+  return responseJson<VoiceCatalogAsset>(await fetch(`/api/voice-catalog/assets/${encodeURIComponent(assetId)}/versions/${encodeURIComponent(versionId)}/activate`, { method: "POST" }));
+}
+
+export async function deleteVoiceCatalogVersion(assetId: string, versionId: string): Promise<VoiceCatalogAsset> {
+  return responseJson<VoiceCatalogAsset>(await fetch(`/api/voice-catalog/assets/${encodeURIComponent(assetId)}/versions/${encodeURIComponent(versionId)}`, { method: "DELETE" }));
+}
+
+export async function createPlatformProject(
+  name: string,
+  contentType: PlatformProjectType,
+  text: string,
+): Promise<PlatformProject> {
+  return responseJson<PlatformProject>(await fetch("/api/platform/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, content_type: contentType, text }),
+  }));
+}
+
+export async function fetchPlatformProjectWorkspace(projectId: string): Promise<PlatformProjectWorkspace> {
+  return responseJson<PlatformProjectWorkspace>(await fetch(`/api/platform/projects/${encodeURIComponent(projectId)}/workspace`));
+}
+
+export async function matchOrGenerateVoice(
+  projectId: string,
+  request: {
+    speaker_key?: string;
+    character_id?: string;
+    display_name: string;
+    profile?: Record<string, unknown>;
+    gender?: string;
+    age_range?: string;
+    timbre_tags?: string[];
+    delivery_tags?: string[];
+    use_cases?: string[];
+    voice_prompt?: string;
+    reference_text?: string;
+    limit?: number;
+    minimum_score?: number;
+  },
+): Promise<ProjectVoiceDecision> {
+  return responseJson<ProjectVoiceDecision>(await fetch(`/api/platform/projects/${encodeURIComponent(projectId)}/voice-decisions/match-or-generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  }));
+}
+
+export async function startVoiceDecisionGeneration(projectId: string, decisionId: string): Promise<ProjectVoiceDecision> {
+  return responseJson<ProjectVoiceDecision>(await fetch(`/api/platform/projects/${encodeURIComponent(projectId)}/voice-decisions/${encodeURIComponent(decisionId)}/generate`, { method: "POST" }));
+}
+
+export async function acceptProjectVoiceSnapshot(
+  projectId: string,
+  request: {
+    speaker_key: string;
+    display_name: string;
+    source: "catalog" | "generated";
+    catalog_asset_id?: string;
+    catalog_version_id?: string;
+    job_id?: string;
+    voice_prompt?: string;
+    reference_text?: string;
+    match_score?: number;
+    match_reasons?: string[];
+  },
+): Promise<ProjectVoiceSnapshot> {
+  return responseJson<ProjectVoiceSnapshot>(await fetch(`/api/platform/projects/${encodeURIComponent(projectId)}/voice-snapshots`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  }));
+}
+
+export async function createQuickVoicePreview(projectId: string): Promise<VoiceTask> {
+  return responseJson<VoiceTask>(await fetch(`/api/platform/projects/${encodeURIComponent(projectId)}/tasks/quick-preview`, { method: "POST" }));
 }
 
 export async function fetchSources(): Promise<SourceSummary[]> {
@@ -404,6 +601,30 @@ export async function updateProductionPreferences(settings: {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings),
+    }),
+  );
+}
+
+export async function fetchGenieVoices(): Promise<GenieVoiceOption[]> {
+  return responseJson<GenieVoiceOption[]>(await fetch("/api/experiments/genie/voices"));
+}
+
+export async function compareGenieExperiment(request: {
+  project_id: string;
+  text: string;
+  reference_audio_url: string;
+  reference_text: string;
+  voice_id: string;
+  character_name?: string;
+  language?: string;
+  gsv_model: QualityModelId;
+  render_options: QualityRenderOptions;
+}): Promise<GenieCompareResult> {
+  return responseJson<GenieCompareResult>(
+    await fetch("/api/experiments/genie/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
     }),
   );
 }

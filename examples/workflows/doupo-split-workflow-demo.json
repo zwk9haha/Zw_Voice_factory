@@ -1,0 +1,36 @@
+{
+  "name": "demo · 斗破苍穹完整工作流（分步版）",
+  "version": "2.0",
+  "description": "完整导入斗破苍穹测试 TXT，将文本分析、角色声线分配、推理设置、语音生成、RVC、响度与合并分别编辑。",
+  "inputs": [{"name": "project_id", "label": "项目 ID", "type": "string", "default": "demo"}],
+  "nodes": [
+    {"node_id": "source", "node_type": "text.import", "title": "导入文本", "position": {"x": 30, "y": 250}, "inputs": {"project_id": "$input.project_id"}, "config": {"file_path": "input/斗破苍穹测试.txt", "file_name": "斗破苍穹测试.txt", "port_language": "zh"}},
+    {"node_id": "analysis", "node_type": "text.analysis", "title": "文本分段与说话人识别", "position": {"x": 320, "y": 250}, "config": {"port_language": "zh", "speaker_names": ["萧炎", "萧薰儿", "萧战", "萧媚", "萧宁", "萧玉", "纳兰嫣然", "纳兰肃", "葛叶", "药老"]}},
+    {"node_id": "cast", "node_type": "voice.assign_voices", "title": "角色声线分配", "position": {"x": 610, "y": 250}, "config": {"port_language": "zh", "voice_map": {"旁白": "gunian", "萧炎": "bazong", "萧薰儿": "suyingxue", "薰儿": "suyingxue", "熏儿": "suyingxue", "萧战": "fushiyu", "萧媚": "bingjiao", "萧宁": "bazong", "萧玉": "suyingxue", "纳兰嫣然": "bingjiao", "纳兰肃": "fushiyu", "葛叶": "fushiyu", "药老": "fushiyu", "未指定说话人": "fushiyu"}, "reference_map": {}}},
+    {"node_id": "settings", "node_type": "voice.render_settings", "title": "选择推理模型与语速", "position": {"x": 900, "y": 20}, "config": {"port_language": "zh", "route": "fast", "quality_model": "gpt_sovits_v2", "fast_speed": 1.0}},
+    {"node_id": "render", "node_type": "voice.batch_render", "title": "批量语音生成", "position": {"x": 900, "y": 300}, "config": {"port_language": "zh", "reuse_run_id": ""}},
+    {"node_id": "rvc", "node_type": "audio.rvc", "title": "RVC 音色处理（可选）", "position": {"x": 1190, "y": 250}, "config": {"port_language": "zh", "enabled": false}},
+    {"node_id": "loudness", "node_type": "audio.loudness", "title": "统一节目响度", "position": {"x": 1480, "y": 250}, "config": {"port_language": "zh"}},
+    {"node_id": "merge", "node_type": "audio.merge", "title": "合并导出多角色音频", "position": {"x": 1770, "y": 250}, "config": {"port_language": "zh"}}
+  ],
+  "edges": [
+    {"edge_id": "source-analysis", "source_node": "source", "source_port": "text", "target_node": "analysis", "target_port": "text"},
+    {"edge_id": "analysis-cast", "source_node": "analysis", "source_port": "segments", "target_node": "cast", "target_port": "segments"},
+    {"edge_id": "cast-render", "source_node": "cast", "source_port": "segments", "target_node": "render", "target_port": "segments"},
+    {"edge_id": "settings-render", "source_node": "settings", "source_port": "render_settings", "target_node": "render", "target_port": "render_settings"},
+    {"edge_id": "render-rvc", "source_node": "render", "source_port": "job_ids", "target_node": "rvc", "target_port": "job_ids"},
+    {"edge_id": "settings-rvc", "source_node": "settings", "source_port": "route", "target_node": "rvc", "target_port": "route"},
+    {"edge_id": "rvc-loudness", "source_node": "rvc", "source_port": "job_ids", "target_node": "loudness", "target_port": "job_ids"},
+    {"edge_id": "loudness-merge", "source_node": "loudness", "source_port": "job_ids", "target_node": "merge", "target_port": "job_ids"},
+    {"edge_id": "settings-merge", "source_node": "settings", "source_port": "route", "target_node": "merge", "target_port": "route"},
+    {"edge_id": "source-render-project", "source_node": "source", "source_port": "project_id", "target_node": "render", "target_port": "project_id"},
+    {"edge_id": "source-rvc-project", "source_node": "source", "source_port": "project_id", "target_node": "rvc", "target_port": "project_id"},
+    {"edge_id": "source-loudness-project", "source_node": "source", "source_port": "project_id", "target_node": "loudness", "target_port": "project_id"},
+    {"edge_id": "source-merge-project", "source_node": "source", "source_port": "project_id", "target_node": "merge", "target_port": "project_id"}
+  ],
+  "outputs": [
+    {"name": "audio_url", "type": "string", "source_node": "merge", "source_port": "audio_url"},
+    {"name": "speakers", "type": "json", "source_node": "cast", "source_port": "speakers"},
+    {"name": "source_name", "type": "string", "source_node": "source", "source_port": "source_name"}
+  ]
+}
