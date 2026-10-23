@@ -238,7 +238,7 @@ def test_project_ui_reviews_correct_speakers_and_voices_before_rendering(tmp_pat
     assert invalid.status_code == 422
     assert asyncio.run(request(application, "GET", f"/api/workflows/runs/{run_id}")).json()["status"] == "awaiting_review"
     approved = asyncio.run(request(application, "POST", f"/api/workflows/runs/{run_id}/nodes/speakers/review", json={"decision": "approved", "edits": {"speakers": {segment_id: "苏晴"}}, "comment": "修正归属"}))
-    assert approved.status_code == 200
+    assert approved.status_code == 202
     awaiting_voice = wait_for_run(application, run_id, {"awaiting_review"})
     voice_checkpoint = next(node for node in awaiting_voice["node_runs"] if node["node_id"] == "voices")
     assert voice_checkpoint["review"]["payload"]["segments"][0]["speaker_name"] == "苏晴"
@@ -246,7 +246,7 @@ def test_project_ui_reviews_correct_speakers_and_voices_before_rendering(tmp_pat
     restarted = create_app(tmp_path, model_gateway=gateway, loudness_processor=PassThroughLoudness())
     invalid_voice = asyncio.run(request(restarted, "POST", f"/api/workflows/runs/{run_id}/nodes/voices/review", json={"decision": "approved", "edits": {"voices": {"苏晴": "unknown-voice"}}}))
     assert invalid_voice.status_code == 422
-    assert asyncio.run(request(restarted, "POST", f"/api/workflows/runs/{run_id}/nodes/voices/review", json={"decision": "approved", "edits": {"voices": {"苏晴": "suyingxue"}}})).status_code == 200
+    assert asyncio.run(request(restarted, "POST", f"/api/workflows/runs/{run_id}/nodes/voices/review", json={"decision": "approved", "edits": {"voices": {"苏晴": "suyingxue"}}})).status_code == 202
     completed = wait_for_run(restarted, run_id)
     assert completed["status"] == "completed", completed
     render = next(node for node in completed["node_runs"] if node["node_id"] == "render")
