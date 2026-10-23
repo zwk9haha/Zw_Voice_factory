@@ -7,6 +7,9 @@
 .experience-header p, .experience-binding { color: var(--muted); font-size: 13px; }
 .experience-project-bar { padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
 .experience-project-bar label { display: grid; gap: 7px; flex: 1 1 210px; min-width: 0; font-size: 12px; }
+.experience-switch { padding: 14px 0; }
+.experience-switch a { text-decoration: none; }
+.experience-switch small { color: var(--muted); font-size: 11px; }
 .workflow-experience input:not([type=checkbox]), .workflow-experience textarea, .workflow-experience select { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; background: var(--bg); color: var(--text); font: inherit; min-width: 0; }
 .workflow-experience textarea { resize: vertical; line-height: 1.7; }
 .experience-field { display: grid; gap: 7px; margin-bottom: 15px; font-size: 13px; }

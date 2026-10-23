@@ -4,7 +4,10 @@
     [ValidateRange(0, 2147483647)]
     [int]$GuiOwnerPid = 0,
     [switch]$NoBrowser,
-    [switch]$ChecksOnly
+    [switch]$ChecksOnly,
+    [ValidateSet('All', 'Frontend')]
+    [string]$CheckScope = 'All',
+    [string]$BackendTestFilter = ''
 )
 
 Set-StrictMode -Version Latest
@@ -44,6 +47,7 @@ $qualityWorkbenchTest = Join-Path $factoryRoot 'frontend\scripts\verify-quality-
 $oneClickLauncherTest = Join-Path $factoryRoot 'frontend\scripts\verify-one-click-launcher.mjs'
 $workflowConnectionsTest = Join-Path $factoryRoot 'frontend\scripts\verify-workflow-connections.mjs'
 $workflowTraceTest = Join-Path $factoryRoot 'frontend\scripts\verify-workflow-trace.mjs'
+$projectUiLayoutTest = Join-Path $factoryRoot 'frontend\scripts\verify-project-ui-layout.mjs'
 $launcherStateRoot = Join-Path $factoryRoot 'outputs\runtime'
 $runtimeLogRoot = Join-Path $factoryRoot 'outputs\logs\runtime'
 $launcherStatePath = Join-Path $launcherStateRoot 'launcher.json'
@@ -758,6 +762,7 @@ function Invoke-CodeChecks {
     Invoke-ManagedTest -Name '前端生产构建' -Executable $nodePath -Arguments @(
         $viteScript, 'build'
     ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
+    if ($ChecksOnly -and $CheckScope -eq 'Frontend') { return }
     $testTemp = Join-Path $factoryRoot "outputs\runtime\test-temp-$PID"
     New-Item -ItemType Directory -Path $testTemp -Force | Out-Null
     $previousTemp = $env:TEMP
@@ -765,9 +770,14 @@ function Invoke-CodeChecks {
     $env:TEMP = $testTemp
     $env:TMP = $testTemp
     try {
-        Invoke-ManagedTest -Name '后端自动化测试' -Executable $backendPython -Arguments @(
+        $backendTestArguments = @(
             '-m', 'pytest', '-q', '-p', 'no:cacheprovider', '--basetemp', (Join-Path $testTemp 'pytest')
-        ) -WorkingDirectory (Join-Path $factoryRoot 'backend')
+        )
+        if ($BackendTestFilter) {
+            Write-Host "[范围] 后端测试筛选：$BackendTestFilter" -ForegroundColor DarkCyan
+            $backendTestArguments += @('-k', $BackendTestFilter)
+        }
+        Invoke-ManagedTest -Name '后端自动化测试' -Executable $backendPython -Arguments $backendTestArguments -WorkingDirectory (Join-Path $factoryRoot 'backend')
     } finally {
         $env:TEMP = $previousTemp
         $env:TMP = $previousTmp
@@ -881,11 +891,18 @@ try {
             throw "工作流运行详情执行失败，退出码：$LASTEXITCODE"
         }
         Write-Host '[通过] 工作流运行详情与画布结构' -ForegroundColor Green
+        Assert-File $projectUiLayoutTest '项目界面对比回归检查'
+        Write-Host '[测试] 项目布局恢复与双线演示契约' -ForegroundColor Yellow
+        & $nodePath $projectUiLayoutTest
+        if ($LASTEXITCODE -ne 0) {
+            throw "项目布局回归检查失败，退出码：$LASTEXITCODE"
+        }
+        Write-Host '[通过] 项目布局恢复与双线演示契约' -ForegroundColor Green
         if ($ChecksOnly) {
             $jobHandle = [ZwVoiceLauncher.NativeJob]::CreateKillOnCloseJob()
-            Write-Host '[范围] 代码验证：前端类型、生产构建与后端测试；不启动模型服务。' -ForegroundColor DarkCyan
+            Write-Host "[范围] 代码验证 $CheckScope；不启动模型服务。All 包含后端测试，Frontend 只验证前端。" -ForegroundColor DarkCyan
             Invoke-CodeChecks
-            Write-Host '代码验证全部通过；模型服务的预加载与真实推理不在本次范围内。' -ForegroundColor Green
+            Write-Host "代码验证 $CheckScope 范围全部通过；模型服务的预加载与真实推理不在本次范围内。" -ForegroundColor Green
             exit 0
         }
     }
@@ -955,6 +972,17 @@ try {
         Wait-LocalAnalyzerUnloaded
     }
 
+    Write-StartupProgress -Percent 30 -Message '启动 WebUI 与极速路线'
+    $frontendProcess = Start-ManagedProcess -Name 'Vite WebUI 前端服务' -Executable $nodePath -Arguments @(
+        $viteScript, '--host', '127.0.0.1', '--port', '5173', '--strictPort'
+    ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
+    Wait-ServiceReady -Name 'WebUI 前端服务' -Uri 'http://127.0.0.1:5173/' -Process $frontendProcess -TimeoutSeconds 90
+    $fastProcess = Start-ManagedProcess -Name 'Sherpa ONNX 轻量 TTS' -Executable $fastPython -Arguments @(
+        $fastWorker, '--model-path', $fastWeights, '--host', '127.0.0.1', '--port', '9883', '--threads', '2'
+    ) -WorkingDirectory $factoryRoot
+    Wait-ServiceReady -Name '轻量 TTS' -Uri 'http://127.0.0.1:9883/health' -Process $fastProcess -TimeoutSeconds 120
+    Write-Host "WebUI 与极速路线已就绪：$webUrl；质量模型继续预加载。" -ForegroundColor Cyan
+
     Write-StartupProgress -Percent 35 -Message '加载 GPT-SoVITS 模型'
     $previousNumbaDisableJit = $env:NUMBA_DISABLE_JIT
     $env:NUMBA_DISABLE_JIT = '1'
@@ -981,13 +1009,6 @@ try {
     Wait-ServiceReady -Name 'VoxCPM2' -Uri 'http://127.0.0.1:9881/health' -Process $voxcpmProcess -TimeoutSeconds 600
     Write-StartupProgress -Percent 82 -Message 'VoxCPM2 模型已就绪'
 
-    Write-StartupProgress -Percent 84 -Message '加载极速路线轻量 TTS'
-    $fastProcess = Start-ManagedProcess -Name 'Sherpa ONNX 轻量 TTS' -Executable $fastPython -Arguments @(
-        $fastWorker, '--model-path', $fastWeights, '--host', '127.0.0.1', '--port', '9883', '--threads', '2'
-    ) -WorkingDirectory $factoryRoot
-    Wait-ServiceReady -Name '轻量 TTS' -Uri 'http://127.0.0.1:9883/health' -Process $fastProcess -TimeoutSeconds 120
-    Write-StartupProgress -Percent 88 -Message '极速路线轻量 TTS 已就绪'
-
     Write-StartupProgress -Percent 90 -Message '启动 IndexTTS2 按需服务'
     $indexProcess = Start-ManagedProcess -Name 'IndexTTS2 按需服务' -Executable $indexPython -Arguments @(
         $indexWorker, '--model-path', $indexWeights, '--tool-root', $indexRoot, '--host', '127.0.0.1', '--port', '9882', '--device', 'cpu'
@@ -1007,11 +1028,6 @@ try {
         Write-StartupProgress -Percent 96 -Message 'Genie-TTS 未安装，跳过可选试听服务'
     }
 
-    Write-StartupProgress -Percent 97 -Message '启动 WebUI'
-    $frontendProcess = Start-ManagedProcess -Name 'Vite WebUI 前端服务' -Executable $nodePath -Arguments @(
-        $viteScript, '--host', '127.0.0.1', '--port', '5173', '--strictPort'
-    ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
-    Wait-ServiceReady -Name 'WebUI 前端服务' -Uri 'http://127.0.0.1:5173/' -Process $frontendProcess -TimeoutSeconds 90
     Write-StartupProgress -Percent 100 -Message '全部模型与 WebUI 已就绪'
 
     Write-LauncherState @{

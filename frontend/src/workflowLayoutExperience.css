@@ -1,0 +1,21 @@
+.project-layout-toolbar { display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between; align-items: center; padding: 16px 0; }
+.project-layout-toolbar > div:first-child { display: grid; gap: 7px; }
+.project-layout-toolbar strong { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.project-layout-toolbar small { color: var(--muted); font-size: 12px; }
+.project-layout-toolbar label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.project-layout-toolbar select { width: 85px; }
+.project-layout-palette { padding: 16px; border: 1px dashed var(--accent); background: var(--panel); border-radius: 12px; margin-bottom: 18px; }
+.project-layout-palette strong { font-size: 13px; }
+.project-layout-palette p { font-size: 12px; color: var(--muted); }
+.project-layout-palette > div { display: flex; flex-wrap: wrap; gap: 18px; }
+.project-layout-palette label { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.project-layout-grid { display: grid; grid-template-columns: repeat(var(--experience-columns, 2), minmax(0, 1fr)); gap: 18px; align-items: start; }
+.project-layout-card--wide { grid-column: 1 / -1; }
+.project-layout-grid--editing .project-layout-card { border-style: dashed; transition: border-color 140ms, box-shadow 140ms; }
+.project-layout-card--drop { outline: 2px solid var(--accent); outline-offset: 3px; }
+.project-layout-card-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 0 12px; margin-bottom: 16px; border-bottom: 1px solid var(--border); color: var(--muted); }
+.project-layout-card-controls span { flex: 1; font-size: 11px; }
+.project-layout-card-controls label { display: flex; gap: 5px; align-items: center; font-size: 11px; }
+.project-layout-grip { cursor: grab; touch-action: none; }
+.project-layout-grip:active { cursor: grabbing; }
+@media (max-width: 850px) { .project-layout-grid { grid-template-columns: minmax(0, 1fr); } .project-layout-card { grid-column: 1; } }

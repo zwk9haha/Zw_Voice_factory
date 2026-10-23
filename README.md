@@ -9,6 +9,7 @@ Zw Voice Factory 是一个面向长篇小说的 Local-first 多角色配音生�
 ## 文档入口
 
 - [2026-10-23 开发进度存档](docs/DEVELOPMENT_CHECKPOINT_2026-10-23.md)：当前功能、真实 Demo、已知限制，以及 UI 双分支探索的共同基线。
+- [工作流项目界面 A/B 对比](docs/WORKFLOW_UI_COMPARISON.md)：统一工作台与可编辑布局的入口、共用审核流程和演示方法；在 `codex/workflow-ui-layout` 分支的首页可同时进入两种界面。
 - [中文使用说明](使用说明.md)：从安装、模型下载、启动器到完整配音流程的操作手册。
 - [音声平台泛化改造任务书](docs/VOICE_PLATFORM_EXPANSION_TASK.md)：从小说配音工作站扩展为通用音声平台的目标、领域对象、阶段任务和验收标准。
 - [音声工作流平台扩展路线](docs/VOICE_WORKFLOW_PLATFORM_NEXT_SESSION.md)：新会话交接文档，记录可组合节点、固定工作流、实施顺序和验收标准。
