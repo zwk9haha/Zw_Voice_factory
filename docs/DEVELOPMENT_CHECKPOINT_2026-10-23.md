@@ -52,8 +52,13 @@
 
 ## 本次验证
 
-- 入口：`Start-ZwVoice.cmd test`，执行中，完成后在提交前更新结果。
-- 文档 `docs/adr/0008-workflow-execution-view.md` 记录此前一项质量工作流错误传播测试失败；本次据实际结果记录，不将历史的局部通过表述为全量通过。
+- 唯一入口：`Start-ZwVoice.cmd test`。
+- 通过启动器的六项前置检查：主题配色隔离、音频主题与日志、质量路由与流播缓存、一键流程与启动器配色、工作流端口规则、工作流运行详情与画布结构。
+- 通过本地音色画像的真实模型推理，分析模型随后释放显存。
+- 全量验证未完成：GPT-SoVITS 预加载在结束本次验证时尚未就绪；通过 `Start-ZwVoice.cmd stop` 结束本次测试运行。当前记录不足以确定预加载延迟的原因。
+- 因未到达后续阶段，本轮没有执行后端全量 pytest、前端类型检查和生产构建，不能宣称它们通过。
+- 文档 `docs/adr/0008-workflow-execution-view.md` 还记录此前失败的 `test_split_quality_workflow_uses_selected_model_and_requires_reference`；本轮未重新执行到该用例，其状态仍待复核。
+- 本机启动器记录：`outputs/logs/runtime/launcher-20261023-030304-42452.log`，日志按原有规则留在本地。
 
 ## 存档内容与恢复
 
