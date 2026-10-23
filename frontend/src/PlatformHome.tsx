@@ -2,6 +2,7 @@ import { ArrowRight, BookOpenText, CheckCircle2, FileAudio, FileText, GitBranch,
 import { useEffect, useState } from "react";
 import { acceptProjectVoiceSnapshot, createPlatformProject, createQuickVoicePreview, fetchPlatformProjectWorkspace, matchOrGenerateVoice, startVoiceDecisionGeneration } from "./api";
 import { ProjectWorkflowPanel } from "./ProjectWorkflowPanel";
+import { WorkflowProjectExperience } from "./WorkflowProjectExperience";
 import type { PlatformProject, PlatformProjectType, ProjectVoiceDecision, PlatformTextSegment, VoiceTask } from "./types";
 
 interface PlatformHomeProps {
@@ -22,6 +23,12 @@ const typeLabels: Record<PlatformProjectType, string> = {
   subtitle: "字幕",
   document: "普通文档",
 };
+
+function readExperience(): { projectId: string | null } | null {
+  const match = window.location.hash.match(/^#workflow-ui\/standard(?:\/([^/]*))?$/);
+  if (!match) return null;
+  try { return { projectId: match[1] ? decodeURIComponent(match[1]) : null }; } catch { return null; }
+}
 
 const typeIcons: Record<PlatformProjectType, typeof FileText> = {
   short_text: WandSparkles,
@@ -49,6 +56,21 @@ export function PlatformHome({ projects, loading, onRefresh, onOpenNovel, onProj
   const [decisions, setDecisions] = useState<ProjectVoiceDecision[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [experience, setExperience] = useState(readExperience);
+  useEffect(() => {
+    const update = () => setExperience(readExperience());
+    window.addEventListener("popstate", update);
+    window.addEventListener("hashchange", update);
+    return () => { window.removeEventListener("popstate", update); window.removeEventListener("hashchange", update); };
+  }, []);
+  function openExperience(projectId: string | null = null) {
+    window.history.pushState(null, "", `#workflow-ui/standard/${projectId ? encodeURIComponent(projectId) : ""}`);
+    setExperience({ projectId });
+  }
+  function closeExperience() {
+    window.history.pushState(null, "", `${window.location.pathname}${window.location.search}`);
+    setExperience(null);
+  }
 
   useEffect(() => {
     setSelectedProjectId((current) => current && projects.some((project) => project.project_id === current) ? current : null);
@@ -165,6 +187,8 @@ export function PlatformHome({ projects, loading, onRefresh, onOpenNovel, onProj
     }
   }
 
+  if (experience) return <WorkflowProjectExperience key={experience.projectId ?? "select"} projects={projects} initialProjectId={experience.projectId} onProjectCreated={onProjectCreated} onProjectChange={openExperience} onBack={closeExperience} onOpenEditor={onOpenWorkflowStudio} />;
+
   return (
     <section className="platform-home">
       <header className="platform-hero">
@@ -172,6 +196,7 @@ export function PlatformHome({ projects, loading, onRefresh, onOpenNovel, onProj
         <div className="platform-hero-actions"><button className="secondary-button" onClick={() => onOpenWorkflowStudio()}><GitBranch size={14} />工作流编排</button><button className="secondary-button" onClick={onOpenCatalog}><Library size={14} />基础音色库</button><button className="secondary-button" onClick={onRefresh} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""} />刷新项目</button></div>
       </header>
 
+      <div className="platform-ui-experiments"><button className="platform-ui-entry" onClick={() => openExperience()}><strong>A · 统一项目工作台</strong><span>按制作顺序导入、审核、生成并导出；工作流决定所需操作。</span></button></div>
       <div className="platform-home-grid">
         <section className="platform-create-card">
           <div className="platform-card-heading"><div><span className="eyebrow">NEW VOICE PROJECT</span><h2>新建音声项目</h2></div><button className="text-button platform-short-text-link" onClick={onOpenShortText}><WandSparkles size={13} />短文本配置</button></div>

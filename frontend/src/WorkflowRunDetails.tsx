@@ -8,6 +8,7 @@ import type { WorkflowTraceJob } from "./workflowTrace";
 import "./workflowTrace.css";
 
 const nodeLabels: Record<string, string> = {
+  "human.speakers": "校正说话人", "human.voices": "试听并确认声线",
   "text.import": "导入文本", "text.input": "输入文本", "text.analysis": "文本分析", "control.condition": "条件分支",
   "voice.character_analysis": "角色识别与画像", "voice.profile": "声线画像", "voice.match_or_generate": "匹配或生成声音",
   "voice.reference_audio": "生成参考音频", "voice.assign_voices": "角色声线分配", "voice.render_settings": "推理模型与参数",

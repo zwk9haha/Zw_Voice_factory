@@ -3,7 +3,8 @@
     [string]$Mode = 'run',
     [ValidateRange(0, 2147483647)]
     [int]$GuiOwnerPid = 0,
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    [switch]$ChecksOnly
 )
 
 Set-StrictMode -Version Latest
@@ -750,6 +751,29 @@ function Invoke-ManagedTest {
     Write-Host "[通过] $Name" -ForegroundColor Green
 }
 
+function Invoke-CodeChecks {
+    Invoke-ManagedTest -Name '前端类型检查' -Executable $nodePath -Arguments @(
+        $tscScript, '-b'
+    ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
+    Invoke-ManagedTest -Name '前端生产构建' -Executable $nodePath -Arguments @(
+        $viteScript, 'build'
+    ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
+    $testTemp = Join-Path $factoryRoot "outputs\runtime\test-temp-$PID"
+    New-Item -ItemType Directory -Path $testTemp -Force | Out-Null
+    $previousTemp = $env:TEMP
+    $previousTmp = $env:TMP
+    $env:TEMP = $testTemp
+    $env:TMP = $testTemp
+    try {
+        Invoke-ManagedTest -Name '后端自动化测试' -Executable $backendPython -Arguments @(
+            '-m', 'pytest', '-q', '-p', 'no:cacheprovider', '--basetemp', (Join-Path $testTemp 'pytest')
+        ) -WorkingDirectory (Join-Path $factoryRoot 'backend')
+    } finally {
+        $env:TEMP = $previousTemp
+        $env:TMP = $previousTmp
+    }
+}
+
 function Test-LocalVoiceAnalyzer {
     Write-Host '[测试] 本地音色画像真实推理' -ForegroundColor Yellow
     $payload = @{
@@ -857,6 +881,13 @@ try {
             throw "工作流运行详情执行失败，退出码：$LASTEXITCODE"
         }
         Write-Host '[通过] 工作流运行详情与画布结构' -ForegroundColor Green
+        if ($ChecksOnly) {
+            $jobHandle = [ZwVoiceLauncher.NativeJob]::CreateKillOnCloseJob()
+            Write-Host '[范围] 代码验证：前端类型、生产构建与后端测试；不启动模型服务。' -ForegroundColor DarkCyan
+            Invoke-CodeChecks
+            Write-Host '代码验证全部通过；模型服务的预加载与真实推理不在本次范围内。' -ForegroundColor Green
+            exit 0
+        }
     }
     Assert-Directory $voxcpmSource 'VoxCPM2 源码目录'
     Assert-Directory $voxcpmWeights 'VoxCPM2 权重目录'
@@ -1004,26 +1035,7 @@ try {
         } finally {
             $env:ZW_VOICE_NONINTERACTIVE = $previousNonInteractive
         }
-        $testTemp = Join-Path $factoryRoot "outputs\runtime\test-temp-$PID"
-        New-Item -ItemType Directory -Path $testTemp -Force | Out-Null
-        $previousTemp = $env:TEMP
-        $previousTmp = $env:TMP
-        $env:TEMP = $testTemp
-        $env:TMP = $testTemp
-        try {
-            Invoke-ManagedTest -Name '后端自动化测试' -Executable $backendPython -Arguments @(
-                '-m', 'pytest', '-q', '-p', 'no:cacheprovider', '--basetemp', (Join-Path $testTemp 'pytest')
-            ) -WorkingDirectory (Join-Path $factoryRoot 'backend')
-        } finally {
-            $env:TEMP = $previousTemp
-            $env:TMP = $previousTmp
-        }
-        Invoke-ManagedTest -Name '前端类型检查' -Executable $nodePath -Arguments @(
-            $tscScript, '-b'
-        ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
-        Invoke-ManagedTest -Name '前端生产构建' -Executable $nodePath -Arguments @(
-            $viteScript, 'build'
-        ) -WorkingDirectory (Join-Path $factoryRoot 'frontend')
+        Invoke-CodeChecks
         Write-Host '启动、模型预加载、运行状态检查和自动化测试全部通过。' -ForegroundColor Green
     } else {
         Write-Host 'WebUI 已就绪：http://127.0.0.1:5173/' -ForegroundColor Green

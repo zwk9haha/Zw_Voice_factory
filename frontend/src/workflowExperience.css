@@ -1,0 +1,45 @@
+.workflow-experience, .platform-ui-experiments { --bg: #111218; --panel: #191b23; --text: #eef0f5; --muted: #9ca2b1; --border: #353947; --accent: var(--theme-accent-text); }
+:root[data-theme=light] .workflow-experience, :root[data-theme=light] .platform-ui-experiments { --bg: #f1f3f8; --panel: #fff; --text: #252937; --muted: #667083; --border: #d5dae5; --accent: var(--theme-accent-strong); }
+.workflow-experience { padding: 28px; min-width: 0; color: var(--text); overflow-y: auto; background: var(--bg); }
+.experience-header, .experience-project-bar, .experience-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.experience-header { justify-content: space-between; margin-bottom: 22px; }
+.experience-header h1 { font-size: 25px; margin: 8px 0; }
+.experience-header p, .experience-binding { color: var(--muted); font-size: 13px; }
+.experience-project-bar { padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+.experience-project-bar label { display: grid; gap: 7px; flex: 1 1 210px; min-width: 0; font-size: 12px; }
+.workflow-experience input:not([type=checkbox]), .workflow-experience textarea, .workflow-experience select { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; background: var(--bg); color: var(--text); font: inherit; min-width: 0; }
+.workflow-experience textarea { resize: vertical; line-height: 1.7; }
+.experience-field { display: grid; gap: 7px; margin-bottom: 15px; font-size: 13px; }
+.experience-field > label { display: grid; gap: 7px; }
+.experience-field small, .experience-card > small, .experience-preview small { color: var(--muted); font-size: 12px; }
+.experience-file { font-size: 12px; }
+.experience-standard-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.experience-card { border: 1px solid var(--border); border-radius: 16px; padding: 22px; min-width: 0; background: var(--panel); }
+.experience-card > header { margin-bottom: 18px; }
+.experience-card h2 { font-size: 16px; margin: 0 0 6px; }
+.experience-card p { font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.experience-card small { font-size: 12px; }
+.experience-card--review, .experience-card--history { grid-column: 1 / -1; }
+.experience-card--results { grid-column: 1 / -1; }
+.experience-card progress { width: 100%; accent-color: var(--accent); }
+.experience-steps { padding: 0; list-style: none; display: grid; gap: 6px; }
+.experience-steps li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 12px; border-radius: 8px; background: var(--bg); font-size: 12px; }
+.experience-steps li[data-status=awaiting_review] { border: 1px solid var(--accent); }
+.experience-steps li[data-status=completed], .experience-steps li[data-status=skipped] { color: var(--accent); }
+.experience-callout, .experience-feedback { padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); }
+.experience-feedback[role=alert] { color: var(--danger, #db6868); }
+.experience-review-list { display: grid; gap: 12px; margin-bottom: 16px; max-height: 520px; overflow-y: auto; }
+.experience-review-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 260px); align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.experience-review-row label { display: grid; gap: 6px; font-size: 12px; }
+.experience-preview { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.experience-preview audio { max-width: 100%; height: 34px; }
+.experience-output { display: grid; gap: 12px; margin-bottom: 18px; }
+.experience-output audio { width: 100%; }
+.experience-output a { justify-self: start; }
+.experience-card summary { cursor: pointer; font-size: 13px; padding: 10px 0; }
+.platform-ui-experiments { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.platform-ui-entry { flex: 1 1 250px; display: grid; gap: 7px; text-align: left; border: 1px solid var(--border); border-radius: 13px; padding: 18px; background: var(--panel); color: var(--text); cursor: pointer; }
+.platform-ui-entry strong { font-size: 15px; }
+.platform-ui-entry span { font-size: 12px; color: var(--muted); }
+.platform-ui-entry:hover { border-color: var(--accent); }
+@media (max-width: 850px) { .workflow-experience { padding: 16px; } .experience-standard-grid { grid-template-columns: minmax(0, 1fr); } .experience-card { grid-column: 1; padding: 16px; } .experience-review-row { grid-template-columns: minmax(0, 1fr); } }

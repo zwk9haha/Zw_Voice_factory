@@ -456,6 +456,7 @@ class WorkflowNodeReview(BaseModel):
 class WorkflowNodeReviewRequest(BaseModel):
     decision: WorkflowReviewDecision
     comment: str | None = Field(default=None, max_length=1_000)
+    edits: dict[str, Any] | None = None
 
 
 class WorkflowNodeRun(BaseModel):
@@ -668,6 +669,20 @@ class WorkflowNodeRegistry:
                 inputs=[_port("text", "text", True)], outputs=[_port("segments", "text_segments", True), _port("speakers", "json")],
                 config_schema={"speaker_names": {"type": "array", "items": {"type": "string"}, "description": "可选角色名提示；用于分开旁白和对白，不生成声线画像。"}},
                 execution=WorkflowNodeExecutionPolicy(mode="sync", resource_group="cpu", cacheable=True),
+            ),
+            "human.speakers": WorkflowNodeManifest(
+                type="human.speakers", version="1.0", label="校正说话人", category="voice",
+                description="暂停工作流，逐句校正说话人；明确确认后才向下游传递。",
+                inputs=[_port("segments", "text_segments", True)],
+                outputs=[_port("segments", "text_segments", True), _port("speakers", "json")],
+                execution=WorkflowNodeExecutionPolicy(mode="human", resource_group="cpu", cacheable=False, requires_human_review=True),
+            ),
+            "human.voices": WorkflowNodeManifest(
+                type="human.voices", version="1.0", label="试听并确认声线", category="voice",
+                description="暂停工作流，试听并确认每个角色的轻量声线；选择结果随审核记录保存。",
+                inputs=[_port("segments", "text_segments", True)],
+                outputs=[_port("segments", "text_segments", True), _port("speakers", "json")],
+                execution=WorkflowNodeExecutionPolicy(mode="human", resource_group="cpu", cacheable=False, requires_human_review=True),
             ),
             "voice.character_analysis": WorkflowNodeManifest(
                 type="voice.character_analysis", version="1.0", label="角色识别与画像", category="analysis",
@@ -1366,7 +1381,10 @@ class WorkflowService:
             if node.review.decision is not None:
                 raise WorkflowProblem(409, f"节点 {node_id} 已完成审核")
 
+            # Validate changes before recording approval; a rejected edit leaves the checkpoint open.
+            payload = self._review_outputs(node, request.edits) if request.decision == "approved" else node.review.payload
             now = _now()
+            node.review.payload = payload
             node.review.decision = request.decision
             node.review.comment = _optional_string(request.comment)
             node.review.reviewed_at = now
@@ -1403,6 +1421,37 @@ class WorkflowService:
                 self._record_event_locked(run, "warning", node.message, node.node_id)
                 self._persist_run(run)
             return run.model_copy(deep=True)
+
+    @staticmethod
+    def _review_outputs(node: WorkflowNodeRun, edits: dict[str, Any] | None) -> dict[str, Any]:
+        assert node.review is not None
+        payload = dict(node.review.payload)
+        if not edits:
+            return payload
+        field = {"human.speakers": "speakers", "human.voices": "voices"}.get(node.node_type)
+        if field is None or set(edits) != {field} or not isinstance(edits[field], dict):
+            raise WorkflowProblem(422, "审核修改字段无效")
+        changes = edits[field]
+        segments = [dict(segment) for segment in payload["segments"]]
+        allowed = {str(segment["segment_id"]) for segment in segments} if field == "speakers" else {segment["speaker_name"] for segment in segments}
+        if not set(changes).issubset(allowed):
+            raise WorkflowProblem(422, "审核修改引用了不存在的片段或角色")
+        for key, value in changes.items():
+            if not isinstance(value, str) or not value.strip() or len(value.strip()) > 120:
+                raise WorkflowProblem(422, f"审核值无效：{key}")
+            if field == "voices" and value not in _WORKFLOW_FAST_VOICE_IDS:
+                raise WorkflowProblem(422, f"声线不存在：{value}")
+        for segment in segments:
+            if field == "speakers" and segment["segment_id"] in changes:
+                name = changes[segment["segment_id"]].strip()
+                kind = "narration" if name == "旁白" else "unknown" if name == "未指定说话人" else "named"
+                segment.update(speaker_name=name, speaker_kind=kind,
+                               character_id=f"workflow-character-{hashlib.sha1(name.encode('utf-8')).hexdigest()[:12]}")
+                segment["speaker"] = {**segment.get("speaker", {}), "speaker_name": name, "speaker_kind": kind}
+            elif field == "voices" and segment["speaker_name"] in changes:
+                segment["fast_voice_id"] = changes[segment["speaker_name"]]
+        payload.update(segments=segments, speakers=list(dict.fromkeys(segment["speaker_name"] for segment in segments)))
+        return payload
 
     def cancel(self, run_id: str) -> WorkflowRun:
         with self._lock:
@@ -1931,6 +1980,18 @@ class WorkflowService:
             )
             current = self._submit_and_wait(run_id, request)
             return self._job_outputs(current, resolved_catalog)
+
+        if node_type in {"human.speakers", "human.voices"}:
+            raw = inputs.get("segments")
+            if not isinstance(raw, list) or not raw:
+                raise ValueError("人工审核需要非空文本片段")
+            if node_type == "human.speakers":
+                plan = _workflow_voice_plan(raw)
+            else:
+                plan = [dict(segment) for segment in raw]
+                if any(segment.get("fast_voice_id") not in _WORKFLOW_FAST_VOICE_IDS for segment in plan):
+                    raise ValueError("声线审核需要已分配的轻量声线")
+            return {"segments": plan, "speakers": list(dict.fromkeys(segment["speaker_name"] for segment in plan))}
 
         if node_type == "voice.assign_voices":
             plan = _workflow_voice_plan(inputs.get("segments") or definition.config.get("segments"), inputs.get("voice_map", definition.config.get("voice_map")), inputs.get("reference_map", definition.config.get("reference_map")))

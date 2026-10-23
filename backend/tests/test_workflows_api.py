@@ -205,6 +205,61 @@ def test_workflow_text_analysis_and_voice_match_nodes(tmp_path: Path) -> None:
     assert matched["top_match"]["reasons"]
 
 
+def test_project_ui_reviews_correct_speakers_and_voices_before_rendering(tmp_path: Path) -> None:
+    gateway = WorkflowGateway()
+    application = create_app(tmp_path, model_gateway=gateway, loudness_processor=PassThroughLoudness())
+    project = asyncio.run(request(application, "POST", "/api/platform/projects", json={
+        "name": "双界面测试", "content_type": "script", "text": "林舟：我们出发吧。",
+    })).json()
+    project_id = project["project_id"]
+    created = asyncio.run(request(application, "POST", "/api/workflows", json={
+        "name": "可校正的配音",
+        "nodes": [
+            {"node_id": "analysis", "node_type": "text.analysis", "inputs": {"text": "林舟：我们出发吧。"}, "config": {"speaker_names": ["林舟"]}},
+            {"node_id": "speakers", "node_type": "human.speakers", "inputs": {"segments": "$analysis.segments"}},
+            {"node_id": "cast", "node_type": "voice.assign_voices", "inputs": {"segments": "$speakers.segments"}},
+            {"node_id": "voices", "node_type": "human.voices", "inputs": {"segments": "$cast.segments"}},
+            {"node_id": "render", "node_type": "voice.batch_render", "inputs": {"segments": "$voices.segments", "project_id": "$input.project_id", "render_settings": {"route": "fast", "fast_speed": 1}}},
+            {"node_id": "merge", "node_type": "audio.merge", "inputs": {"job_ids": "$render.job_ids", "project_id": "$input.project_id", "route": "fast"}},
+        ],
+        "outputs": [{"name": "audio_url", "type": "string", "source_node": "merge", "source_port": "audio_url"}],
+    }))
+    assert created.status_code == 201, created.text
+    workflow_id = created.json()["workflow_id"]
+    assert asyncio.run(request(application, "POST", f"/api/workflows/{workflow_id}/publish")).status_code == 200
+    assert asyncio.run(request(application, "PUT", f"/api/workflows/projects/{project_id}/binding", json={"workflow_id": workflow_id})).status_code == 200
+    run = asyncio.run(request(application, "POST", f"/api/workflows/projects/{project_id}/runs", json={"input": {}})).json()
+    run_id = run["run_id"]
+    awaiting = wait_for_run(application, run_id, {"awaiting_review"})
+    checkpoint = next(node for node in awaiting["node_runs"] if node["node_id"] == "speakers")
+    segment_id = checkpoint["review"]["payload"]["segments"][0]["segment_id"]
+    assert gateway.calls == 0
+    invalid = asyncio.run(request(application, "POST", f"/api/workflows/runs/{run_id}/nodes/speakers/review", json={"decision": "approved", "edits": {"speakers": {"missing": "苏晴"}}}))
+    assert invalid.status_code == 422
+    assert asyncio.run(request(application, "GET", f"/api/workflows/runs/{run_id}")).json()["status"] == "awaiting_review"
+    approved = asyncio.run(request(application, "POST", f"/api/workflows/runs/{run_id}/nodes/speakers/review", json={"decision": "approved", "edits": {"speakers": {segment_id: "苏晴"}}, "comment": "修正归属"}))
+    assert approved.status_code == 200
+    awaiting_voice = wait_for_run(application, run_id, {"awaiting_review"})
+    voice_checkpoint = next(node for node in awaiting_voice["node_runs"] if node["node_id"] == "voices")
+    assert voice_checkpoint["review"]["payload"]["segments"][0]["speaker_name"] == "苏晴"
+    assert gateway.calls == 0
+    restarted = create_app(tmp_path, model_gateway=gateway, loudness_processor=PassThroughLoudness())
+    invalid_voice = asyncio.run(request(restarted, "POST", f"/api/workflows/runs/{run_id}/nodes/voices/review", json={"decision": "approved", "edits": {"voices": {"苏晴": "unknown-voice"}}}))
+    assert invalid_voice.status_code == 422
+    assert asyncio.run(request(restarted, "POST", f"/api/workflows/runs/{run_id}/nodes/voices/review", json={"decision": "approved", "edits": {"voices": {"苏晴": "suyingxue"}}})).status_code == 200
+    completed = wait_for_run(restarted, run_id)
+    assert completed["status"] == "completed", completed
+    render = next(node for node in completed["node_runs"] if node["node_id"] == "render")
+    assert render["inputs"]["segments"][0]["speaker"]["speaker_name"] == "苏晴"
+    assert render["inputs"]["segments"][0]["fast_voice_id"] == "suyingxue"
+    assert completed["outputs"]["audio_url"].endswith(".wav")
+    duplicate = asyncio.run(request(restarted, "POST", f"/api/workflows/runs/{run_id}/nodes/voices/review", json={"decision": "rejected"}))
+    assert duplicate.status_code == 409
+    second = asyncio.run(request(restarted, "POST", f"/api/workflows/projects/{project_id}/runs", json={"input": {}})).json()
+    again = wait_for_run(restarted, second["run_id"], {"awaiting_review"})
+    assert next(node for node in again["node_runs"] if node["node_id"] == "speakers")["review"]["decision"] is None
+
+
 def test_project_binds_published_workflow_and_runs_fixed_project_context(tmp_path: Path) -> None:
     application = create_app(tmp_path, model_gateway=WorkflowGateway(), loudness_processor=PassThroughLoudness())
     created_project = asyncio.run(request(application, "POST", "/api/platform/projects", json={

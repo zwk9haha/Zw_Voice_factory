@@ -97,11 +97,11 @@ export async function workflowRunAction(runId: string, action: "start" | "pause"
   return responseJson<WorkflowRun>(await fetch(`/api/workflows/runs/${encodeURIComponent(runId)}/${action}`, { method: "POST" }));
 }
 
-export async function reviewWorkflowNode(runId: string, nodeId: string, decision: "approved" | "rejected", comment?: string): Promise<WorkflowRun> {
+export async function reviewWorkflowNode(runId: string, nodeId: string, decision: "approved" | "rejected", comment?: string, edits?: Record<string, unknown>): Promise<WorkflowRun> {
   return responseJson<WorkflowRun>(await fetch(`/api/workflows/runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/review`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision, comment: comment?.trim() || null }),
+    body: JSON.stringify({ decision, comment: comment?.trim() || null, edits }),
   }));
 }
 
