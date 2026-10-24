@@ -5,6 +5,7 @@
     [int]$GuiOwnerPid = 0,
     [switch]$NoBrowser,
     [switch]$ChecksOnly,
+    [switch]$QualityStreamSmoke,
     [ValidateSet('All', 'Frontend')]
     [string]$CheckScope = 'All',
     [string]$BackendTestFilter = ''
@@ -17,6 +18,7 @@ $ErrorActionPreference = 'Stop'
 $factoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $gptRoot = Join-Path $factoryRoot 'models\tts_tools\gpt_sovits'
 $modelPython = Join-Path $gptRoot '.venv\Scripts\python.exe'
+$gptWorker = Join-Path $factoryRoot 'model_workers\gpt_sovits_server.py'
 $backendPython = Join-Path $factoryRoot 'backend\.venv\Scripts\python.exe'
 $voxcpmSource = Join-Path $factoryRoot 'models\tts_tools\voxcpm2\src'
 $voxcpmWeights = Join-Path $factoryRoot 'models\tts\voxcpm2'
@@ -389,6 +391,21 @@ if ($Mode -eq 'setup-analyzer') {
         }
         Install-LocalAnalyzer
         exit 0
+    } catch {
+        Write-Host "[失败] $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+}
+
+if ($Mode -eq 'test' -and $QualityStreamSmoke) {
+    try {
+        if ($null -eq (Get-HealthyFactoryRuntime)) {
+            throw '请先使用 Start-ZwVoice.cmd run 启动项目，再运行流式音频实测。'
+        }
+        $smokeNode = (Get-Command node.exe -ErrorAction Stop).Source
+        Write-Host '[测试] GPT-SoVITS 真实生成、逐句连播与 PCM 流播放；复用当前启动器实例。' -ForegroundColor Yellow
+        & $smokeNode (Join-Path $factoryRoot 'scripts\quality_stream_smoke.mjs')
+        exit $LASTEXITCODE
     } catch {
         Write-Host "[失败] $($_.Exception.Message)" -ForegroundColor Red
         exit 1
@@ -839,6 +856,7 @@ function Wait-LocalAnalyzerUnloaded {
 
 try {
     Assert-File $modelPython '模型 Python 环境'
+    Assert-File $gptWorker 'GPT-SoVITS 工作服务'
     Assert-File $backendPython '后端 Python 环境'
     Assert-File $voxcpmWorker 'VoxCPM2 工作服务'
     Assert-File $indexPython 'IndexTTS2 Python 环境'
@@ -984,15 +1002,9 @@ try {
     Write-Host "WebUI 与极速路线已就绪：$webUrl；质量模型继续预加载。" -ForegroundColor Cyan
 
     Write-StartupProgress -Percent 35 -Message '加载 GPT-SoVITS 模型'
-    $previousNumbaDisableJit = $env:NUMBA_DISABLE_JIT
-    $env:NUMBA_DISABLE_JIT = '1'
-    try {
-        $gptProcess = Start-ManagedProcess -Name 'GPT-SoVITS 模型预加载' -Executable $modelPython -Arguments @(
-            'api_v2.py', '-a', '127.0.0.1', '-p', '9880', '-c', 'GPT_SoVITS/configs/tts_infer.yaml'
-        ) -WorkingDirectory $gptRoot
-    } finally {
-        $env:NUMBA_DISABLE_JIT = $previousNumbaDisableJit
-    }
+    $gptProcess = Start-ManagedProcess -Name 'GPT-SoVITS 模型预加载' -Executable $modelPython -Arguments @(
+        $gptWorker, '--tool-root', $gptRoot, '-a', '127.0.0.1', '-p', '9880', '-c', 'GPT_SoVITS/configs/tts_infer.yaml'
+    ) -WorkingDirectory $gptRoot
     Wait-ServiceReady -Name 'GPT-SoVITS' -Uri 'http://127.0.0.1:9880/openapi.json' -Process $gptProcess -TimeoutSeconds 900
     Write-StartupProgress -Percent 58 -Message 'GPT-SoVITS 模型已就绪'
 
